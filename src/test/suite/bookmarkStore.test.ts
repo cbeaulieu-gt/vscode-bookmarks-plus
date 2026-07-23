@@ -145,3 +145,106 @@ suite('BookmarkStore - moveItem', () => {
     assert.deepStrictEqual(remaining.map((i) => i.id), [b.id, a.id]);
   });
 });
+
+suite('BookmarkStore - collections', () => {
+  test('addCollection assigns sequential order among collections', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const first = await store.addCollection('Work');
+    const second = await store.addCollection('Personal');
+    assert.strictEqual(first.order, 0);
+    assert.strictEqual(second.order, 1);
+  });
+
+  test('renameCollection updates the name without changing order', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    await store.renameCollection(collection.id, 'Work Stuff');
+    const updated = store.getAll().collections.find((c) => c.id === collection.id)!;
+    assert.strictEqual(updated.name, 'Work Stuff');
+    assert.strictEqual(updated.order, 0);
+  });
+
+  test('renameCollection on an unknown id is a no-op', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.renameCollection('does-not-exist', 'X');
+    assert.strictEqual(store.getAll().collections.length, 0);
+  });
+
+  test('deleteCollection ungroups its items instead of deleting them', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+
+    await store.deleteCollection(collection.id);
+
+    const data = store.getAll();
+    assert.strictEqual(data.collections.length, 0);
+    assert.strictEqual(data.items.length, 1, 'items must not be deleted');
+    assert.strictEqual(data.items.find((i) => i.id === item.id)!.collectionId, null);
+  });
+
+  test('deleteCollection performs the mutation as a single workspaceState.update() call', async () => {
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento);
+    const collection = await store.addCollection('Work');
+    await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    await store.addItem({ type: 'file', uri: 'file:///b.txt', collectionId: collection.id });
+    await store.addItem({ type: 'file', uri: 'file:///c.txt', collectionId: collection.id });
+
+    const callsBefore = memento.updateCallCount;
+    await store.deleteCollection(collection.id);
+
+    assert.strictEqual(
+      memento.updateCallCount - callsBefore,
+      1,
+      'deleting a 3-item collection must be exactly one update() call, not one per item'
+    );
+  });
+
+  test('deleteCollection fires onBookmarksChanged exactly once', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+
+    let fireCount = 0;
+    store.onBookmarksChanged(() => { fireCount++; });
+    await store.deleteCollection(collection.id);
+    assert.strictEqual(fireCount, 1);
+  });
+
+  test('deleteCollection renumbers ungrouped items contiguously with any pre-existing root items', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const rootItem = await store.addItem({ type: 'file', uri: 'file:///root.txt' });
+    const collection = await store.addCollection('Work');
+    const grouped = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+
+    await store.deleteCollection(collection.id);
+
+    const data = store.getAll();
+    const byId = (id: string) => data.items.find((i) => i.id === id)!;
+    const orders = [byId(rootItem.id).order, byId(grouped.id).order].sort((a, b) => a - b);
+    assert.deepStrictEqual(orders, [0, 1]);
+  });
+
+  test('deleteCollection preserves item order established by moveItem when ungrouping', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt', collectionId: collection.id });
+    const c = await store.addItem({ type: 'file', uri: 'file:///c.txt', collectionId: collection.id });
+
+    await store.moveItem(c.id, collection.id, 0);
+    await store.deleteCollection(collection.id);
+
+    const rootItems = store.getAll().items
+      .filter((i) => i.collectionId === null)
+      .sort((x, y) => x.order - y.order);
+    assert.deepStrictEqual(rootItems.map((i) => i.id), [c.id, a.id, b.id]);
+  });
+
+  test('deleteCollection on an unknown id is a no-op', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.deleteCollection('does-not-exist');
+    assert.strictEqual(store.getAll().collections.length, 0);
+  });
+});
