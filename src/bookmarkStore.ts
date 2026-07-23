@@ -138,13 +138,14 @@ export class BookmarkStore {
     this.data.collections = this.data.collections.filter((c) => c.id !== id);
     this.renumber(this.data.collections);
 
-    let nextOrder = this.data.items.filter((i) => i.collectionId === null).length;
-    for (const item of this.data.items) {
-      if (item.collectionId === id) {
-        item.collectionId = null;
-        item.order = nextOrder++;
-      }
-    }
+    const nextOrder = this.data.items.filter((i) => i.collectionId === null).length;
+    const orphanedItems = this.data.items
+      .filter((i) => i.collectionId === id)
+      .sort((a, b) => a.order - b.order);
+    orphanedItems.forEach((item, index) => {
+      item.collectionId = null;
+      item.order = nextOrder + index;
+    });
 
     await this.persist();
   }

@@ -226,6 +226,22 @@ suite('BookmarkStore - collections', () => {
     assert.deepStrictEqual(orders, [0, 1]);
   });
 
+  test('deleteCollection preserves item order established by moveItem when ungrouping', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt', collectionId: collection.id });
+    const c = await store.addItem({ type: 'file', uri: 'file:///c.txt', collectionId: collection.id });
+
+    await store.moveItem(c.id, collection.id, 0);
+    await store.deleteCollection(collection.id);
+
+    const rootItems = store.getAll().items
+      .filter((i) => i.collectionId === null)
+      .sort((x, y) => x.order - y.order);
+    assert.deepStrictEqual(rootItems.map((i) => i.id), [c.id, a.id, b.id]);
+  });
+
   test('deleteCollection on an unknown id is a no-op', async () => {
     const store = new BookmarkStore(new FakeMemento());
     await store.deleteCollection('does-not-exist');
