@@ -120,4 +120,32 @@ export class BookmarkStore {
 
     await this.persist();
   }
+
+  async renameCollection(id: string, name: string): Promise<void> {
+    const collection = this.data.collections.find((c) => c.id === id);
+    if (!collection) {
+      return;
+    }
+    collection.name = name;
+    await this.persist();
+  }
+
+  async deleteCollection(id: string): Promise<void> {
+    const exists = this.data.collections.some((c) => c.id === id);
+    if (!exists) {
+      return;
+    }
+    this.data.collections = this.data.collections.filter((c) => c.id !== id);
+    this.renumber(this.data.collections);
+
+    let nextOrder = this.data.items.filter((i) => i.collectionId === null).length;
+    for (const item of this.data.items) {
+      if (item.collectionId === id) {
+        item.collectionId = null;
+        item.order = nextOrder++;
+      }
+    }
+
+    await this.persist();
+  }
 }
