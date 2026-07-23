@@ -1,0 +1,90 @@
+{
+  "name": "vscode-bookmarks-plus",
+  "displayName": "Bookmarks Plus",
+  "description": "Bookmark files and folders (not just lines) in a workspace, with collections and git-repo awareness.",
+  "version": "0.1.0",
+  "publisher": "cbeaulieu-gt",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "icon": "images/icon.png",
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "bookmarksActivityBar", "title": "Bookmarks Plus", "icon": "$(bookmark)" }
+      ]
+    },
+    "views": {
+      "bookmarksActivityBar": [
+        { "id": "bookmarksView", "name": "Bookmarks", "icon": "$(bookmark)" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "bookmarksView",
+        "contents": "No bookmarks yet — right-click a file or folder to add one."
+      }
+    ],
+    "commands": [
+      { "command": "bookmarks.addFile", "title": "Add Bookmark", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.addFolder", "title": "Add Bookmark", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.remove", "title": "Remove Bookmark", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.reveal", "title": "Reveal in Explorer", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.newCollection", "title": "New Collection", "category": "Bookmarks Plus", "icon": "$(new-folder)" },
+      { "command": "bookmarks.renameCollection", "title": "Rename Collection", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.deleteCollection", "title": "Delete Collection", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.moveToCollection", "title": "Move to Collection", "category": "Bookmarks Plus" },
+      { "command": "bookmarks.toggleGroupByRepo", "title": "Toggle Group by Repo", "category": "Bookmarks Plus", "icon": "$(repo)" },
+      { "command": "bookmarks.refresh", "title": "Refresh", "category": "Bookmarks Plus", "icon": "$(refresh)" }
+    ],
+    "menus": {
+      "explorer/context": [
+        { "command": "bookmarks.addFile", "when": "!explorerResourceIsFolder", "group": "bookmarksPlus" },
+        { "command": "bookmarks.addFolder", "when": "explorerResourceIsFolder", "group": "bookmarksPlus" }
+      ],
+      "view/title": [
+        { "command": "bookmarks.newCollection", "when": "view == bookmarksView", "group": "navigation@1" },
+        { "command": "bookmarks.toggleGroupByRepo", "when": "view == bookmarksView", "group": "navigation@2" },
+        { "command": "bookmarks.refresh", "when": "view == bookmarksView", "group": "navigation@3" }
+      ],
+      "view/item/context": [
+        { "command": "bookmarks.remove", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "inline@1" },
+        { "command": "bookmarks.reveal", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "inline@2" },
+        { "command": "bookmarks.moveToCollection", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "inline@3" },
+        { "command": "bookmarks.renameCollection", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "inline@1" },
+        { "command": "bookmarks.deleteCollection", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "inline@2" }
+      ],
+      "commandPalette": [
+        { "command": "bookmarks.addFile", "when": "false" },
+        { "command": "bookmarks.addFolder", "when": "false" }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.11.0",
+    "@types/mocha": "^10.0.6",
+    "@types/glob": "^8.1.0",
+    "typescript": "^5.4.0",
+    "esbuild": "^0.20.0",
+    "mocha": "^10.3.0",
+    "glob": "^10.3.10",
+    "@vscode/test-electron": "^2.3.9",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0"
+  }
+}
