@@ -18,6 +18,7 @@ async function main() {
   });
 
   if (watch) {
+    await ctx.rebuild();
     await ctx.watch();
   } else {
     await ctx.rebuild();
