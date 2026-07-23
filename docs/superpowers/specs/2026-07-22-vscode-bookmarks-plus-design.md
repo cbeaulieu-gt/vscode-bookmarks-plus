@@ -159,7 +159,14 @@ Four cases are handled, and each degrades without surfacing an error dialog:
 
 - Scaffold: `@vscode/test-electron` + Mocha (the standard `yo code` default).
 - **Unit tests:** exercise `BookmarkStore` (add / remove / move / reorder, including the renumbering behavior in [§3](#3-data-model) and the malformed-data fallback in [§6](#6-error-handling)) against a mocked `Memento`.
+  - Multi-root URI resolution: a `BookmarkItem` added from a file under any workspace root stores the full absolute `vscode.Uri.toString()` ([§3](#3-data-model)), and retrieval returns that same absolute URI regardless of which root folder the file lives under — no relative-path resolution is attempted.
+  - Drag-and-drop reorder within a parent: `moveItem()` moved within the same collection (or root) renumbers all siblings in that parent to `0..n-1` ([§3](#3-data-model)).
+  - Drag-and-drop move across collections: `moveItem()` moved into a different collection updates `collectionId` and renumbers siblings to `0..n-1` in both the source and destination parents.
+  - Collection deletion semantics: `deleteCollection(id)` sets `collectionId: null` on every item that belonged to the deleted collection, removes the collection, performs it as a single `workspaceState.update()` call, and does not delete the items themselves ([§3](#3-data-model)).
 - **Integration tests:** verify `BookmarksTreeDataProvider` renders the expected nodes from fixture data, including the group-by-repo "Unknown" bucket for broken items and the single re-render on git-API-ready ([§4](#4-ui--tree-view)).
+  - Grouped-by-repo rendering with no active Git repository: when `vscode.git` is unavailable or no item resolves to a repo root, the view degrades to an ungrouped (or all-"Unknown") render without throwing.
+  - Broken-path rendering: an item whose `fs.stat` lookup fails renders with the warning icon overlay and greyed text, and does not throw.
+  - Click/reveal behavior: clicking a file bookmark opens it in the editor; clicking a folder bookmark triggers `bookmarks.reveal` (reveal in Explorer) and never attempts an inline expand, consistent with folder items always being leaf nodes ([§5](#5-commands)).
 
 ## 8. Packaging / publishing
 
