@@ -88,3 +88,60 @@ suite('BookmarkStore - load and core CRUD', () => {
     assert.strictEqual(fireCount, 1);
   });
 });
+
+suite('BookmarkStore - moveItem', () => {
+  test('reordering within the same parent renumbers all siblings to 0..n-1', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+    const c = await store.addItem({ type: 'file', uri: 'file:///c.txt' });
+
+    // Move c (order 2) to index 0.
+    await store.moveItem(c.id, null, 0);
+
+    const byId = (id: string) => store.getAll().items.find((i) => i.id === id)!;
+    assert.strictEqual(byId(c.id).order, 0);
+    assert.strictEqual(byId(a.id).order, 1);
+    assert.strictEqual(byId(b.id).order, 2);
+  });
+
+  test('moving into a different collection updates collectionId and renumbers both source and destination', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+    const existingInCollection = await store.addItem({ type: 'file', uri: 'file:///c.txt', collectionId: collection.id });
+
+    await store.moveItem(a.id, collection.id, 0);
+
+    const data = store.getAll();
+    const byId = (id: string) => data.items.find((i) => i.id === id)!;
+
+    assert.strictEqual(byId(a.id).collectionId, collection.id);
+    assert.strictEqual(byId(a.id).order, 0);
+    assert.strictEqual(byId(existingInCollection.id).order, 1);
+
+    const remainingRoot = data.items.filter((i) => i.collectionId === null);
+    assert.strictEqual(remainingRoot.length, 1);
+    assert.strictEqual(remainingRoot[0].id, b.id);
+    assert.strictEqual(remainingRoot[0].order, 0);
+  });
+
+  test('moveItem on an unknown id is a no-op', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.moveItem('does-not-exist', null, 0);
+    assert.strictEqual(store.getAll().items.length, 1);
+  });
+
+  test('moveItem clamps an out-of-range index into the valid range', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+
+    await store.moveItem(a.id, null, 999);
+
+    const remaining = store.getAll().items.sort((x, y) => x.order - y.order);
+    assert.deepStrictEqual(remaining.map((i) => i.id), [b.id, a.id]);
+  });
+});
