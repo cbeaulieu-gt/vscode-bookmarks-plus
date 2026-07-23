@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import {
+  BookmarkCollection,
   BookmarkData,
   BookmarkItem,
   emptyBookmarkData,
@@ -83,6 +84,40 @@ export class BookmarkStore {
     this.data.items = this.data.items.filter((i) => i.id !== id);
     const siblings = this.data.items.filter((i) => i.collectionId === target.collectionId);
     this.renumber(siblings);
+    await this.persist();
+  }
+
+  async addCollection(name: string): Promise<BookmarkCollection> {
+    const collection: BookmarkCollection = {
+      id: randomUUID(),
+      name,
+      order: this.data.collections.length
+    };
+    this.data.collections.push(collection);
+    await this.persist();
+    return collection;
+  }
+
+  async moveItem(id: string, newCollectionId: string | null, newIndex: number): Promise<void> {
+    const item = this.data.items.find((i) => i.id === id);
+    if (!item) {
+      return;
+    }
+    const oldCollectionId = item.collectionId;
+
+    const oldSiblings = this.data.items.filter((i) => i.collectionId === oldCollectionId && i.id !== id);
+    this.renumber(oldSiblings);
+
+    item.collectionId = newCollectionId;
+    const newSiblings = this.data.items
+      .filter((i) => i.collectionId === newCollectionId && i.id !== id)
+      .sort((a, b) => a.order - b.order);
+    const clampedIndex = Math.max(0, Math.min(newIndex, newSiblings.length));
+    newSiblings.splice(clampedIndex, 0, item);
+    newSiblings.forEach((entry, index) => {
+      entry.order = index;
+    });
+
     await this.persist();
   }
 }
