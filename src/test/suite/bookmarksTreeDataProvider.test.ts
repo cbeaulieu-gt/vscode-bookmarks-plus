@@ -164,4 +164,21 @@ suite('BookmarksTreeDataProvider - group-by-repo mode', () => {
     assert.strictEqual(itemsInRepoACollection.length, 1);
     assert.strictEqual((itemsInRepoACollection[0] as { item: { uri: string } }).item.uri, 'file:///repo-a/x.txt');
   });
+
+  test('a real repository literally named "Unknown" does not merge with the unresolved fallback bucket', async () => {
+    const { store, provider } = makeProvider(async (uri) =>
+      uri.includes('real-repo') ? { exists: true, repoName: 'Unknown' } : { exists: true, repoName: undefined }
+    );
+    provider.setGroupMode('byRepo');
+    await store.addItem({ type: 'file', uri: 'file:///real-repo/a.txt' });
+    await store.addItem({ type: 'file', uri: 'file:///no-repo/b.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 2, 'real repo named Unknown and the unresolved fallback must be distinct groups');
+    assert.ok(roots.every((n) => (n as { label: string }).label === 'Unknown'));
+
+    const childCounts = await Promise.all(roots.map((r) => provider.getChildren(r)));
+    const counts = childCounts.map((c) => c.length).sort();
+    assert.deepStrictEqual(counts, [1, 1], 'each group must contain exactly its own item, not a merged pair');
+  });
 });
