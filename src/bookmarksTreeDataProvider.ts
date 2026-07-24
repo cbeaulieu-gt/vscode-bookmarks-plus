@@ -124,10 +124,60 @@ export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<Bookma
 
   // getChildrenByRepo is added in Task 8.
   private async getChildrenByRepo(
-    _node: BookmarkNode | undefined,
-    _items: BookmarkItem[],
-    _collections: BookmarkCollection[]
+    node: BookmarkNode | undefined,
+    items: BookmarkItem[],
+    collections: BookmarkCollection[]
   ): Promise<BookmarkNode[]> {
+    if (!node) {
+      const labels = new Set<string>();
+      for (const item of items) {
+        const entry = await this.cache.get(item.uri);
+        labels.add(entry.repoName ?? UNKNOWN_REPO_LABEL);
+      }
+      return [...labels]
+        .sort((a, b) => {
+          if (a === UNKNOWN_REPO_LABEL) return 1;
+          if (b === UNKNOWN_REPO_LABEL) return -1;
+          return a.localeCompare(b);
+        })
+        .map((label) => ({ kind: 'repoGroup', label }));
+    }
+
+    if (node.kind === 'repoGroup') {
+      const itemsInRepo: BookmarkItem[] = [];
+      for (const item of items) {
+        const entry = await this.cache.get(item.uri);
+        if ((entry.repoName ?? UNKNOWN_REPO_LABEL) === node.label) {
+          itemsInRepo.push(item);
+        }
+      }
+      const collectionIdsInRepo = new Set(
+        itemsInRepo.map((i) => i.collectionId).filter((id): id is string => id !== null)
+      );
+      const collectionNodes: BookmarkNode[] = collections
+        .filter((c) => collectionIdsInRepo.has(c.id))
+        .sort((a, b) => a.order - b.order)
+        .map((collection) => ({ kind: 'collection', collection, repoLabel: node.label }));
+      const rootItemNodes: BookmarkNode[] = itemsInRepo
+        .filter((i) => i.collectionId === null)
+        .sort((a, b) => a.order - b.order)
+        .map((item) => ({ kind: 'item', item }));
+      return [...collectionNodes, ...rootItemNodes];
+    }
+
+    if (node.kind === 'collection') {
+      const repoLabel = node.repoLabel ?? UNKNOWN_REPO_LABEL;
+      const candidates = items.filter((i) => i.collectionId === node.collection.id);
+      const matched: BookmarkItem[] = [];
+      for (const item of candidates) {
+        const entry = await this.cache.get(item.uri);
+        if ((entry.repoName ?? UNKNOWN_REPO_LABEL) === repoLabel) {
+          matched.push(item);
+        }
+      }
+      return matched.sort((a, b) => a.order - b.order).map((item) => ({ kind: 'item', item }));
+    }
+
     return [];
   }
 }
