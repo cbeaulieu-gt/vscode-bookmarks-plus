@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { BookmarkStore } from '../../bookmarkStore';
 import { FsGitCache } from '../../fsGitCache';
-import { BookmarksTreeDataProvider, BookmarkNode } from '../../bookmarksTreeDataProvider';
+import { BookmarksTreeDataProvider, BookmarkNode, DND_MIME_TYPE } from '../../bookmarksTreeDataProvider';
 import { FakeMemento } from './fixtures';
 
 function makeProvider(resolve: (uri: string) => Promise<{ exists: boolean; repoName?: string }> = async () => ({ exists: true })) {
@@ -180,5 +180,90 @@ suite('BookmarksTreeDataProvider - group-by-repo mode', () => {
     const childCounts = await Promise.all(roots.map((r) => provider.getChildren(r)));
     const counts = childCounts.map((c) => c.length).sort();
     assert.deepStrictEqual(counts, [1, 1], 'each group must contain exactly its own item, not a merged pair');
+  });
+});
+
+function makeDropTransfer(ids: string[]): vscode.DataTransfer {
+  const dt = new vscode.DataTransfer();
+  dt.set(DND_MIME_TYPE, new vscode.DataTransferItem(ids));
+  return dt;
+}
+
+suite('BookmarksTreeDataProvider - drag and drop', () => {
+  test('dropping with no target appends the item to the root, at the end', async () => {
+    const { store, provider } = makeProvider();
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+
+    const token = new vscode.CancellationTokenSource().token;
+    await provider.handleDrop(undefined, makeDropTransfer([a.id]), token);
+
+    const data = store.getAll();
+    const byId = (id: string) => data.items.find((i) => i.id === id)!;
+    assert.strictEqual(byId(a.id).collectionId, null);
+    assert.strictEqual(byId(a.id).order, 1);
+    assert.strictEqual(byId(b.id).order, 0);
+  });
+
+  test('dropping on a collection node moves the item into it', async () => {
+    const { store, provider } = makeProvider();
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const other = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+
+    const targetNode: BookmarkNode = { kind: 'collection', collection };
+    const token = new vscode.CancellationTokenSource().token;
+    await provider.handleDrop(targetNode, makeDropTransfer([item.id]), token);
+
+    const data = store.getAll();
+    const moved = data.items.find((i) => i.id === item.id)!;
+    const remainingRoot = data.items.filter((i) => i.collectionId === null);
+
+    assert.strictEqual(moved.collectionId, collection.id);
+    assert.strictEqual(remainingRoot.length, 1);
+    assert.strictEqual(remainingRoot[0].id, other.id);
+    assert.strictEqual(remainingRoot[0].order, 0);
+  });
+
+  test('dropping on a sibling item reorders within the same parent', async () => {
+    const { store, provider } = makeProvider();
+    const a = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const b = await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+    const c = await store.addItem({ type: 'file', uri: 'file:///c.txt' });
+
+    const targetNode: BookmarkNode = { kind: 'item', item: a }; // drop c onto a's position
+    const token = new vscode.CancellationTokenSource().token;
+    await provider.handleDrop(targetNode, makeDropTransfer([c.id]), token);
+
+    const data = store.getAll();
+    const byId = (id: string) => data.items.find((i) => i.id === id)!;
+    assert.strictEqual(byId(c.id).order, 0);
+    assert.strictEqual(byId(a.id).order, 1);
+    assert.strictEqual(byId(b.id).order, 2);
+  });
+
+  test('drag and drop are disabled in group-by-repo mode', async () => {
+    const { store, provider } = makeProvider();
+    provider.setGroupMode('byRepo');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+
+    const token = new vscode.CancellationTokenSource().token;
+    await provider.handleDrop(undefined, makeDropTransfer([item.id]), token);
+
+    const untouched = store.getAll().items.find((i) => i.id === item.id)!;
+    assert.strictEqual(untouched.collectionId, null);
+    assert.strictEqual(untouched.order, 0);
+  });
+
+  test('handleDrag is disabled in group-by-repo mode and sets no transfer data', async () => {
+    const { store, provider } = makeProvider();
+    provider.setGroupMode('byRepo');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+
+    const dt = new vscode.DataTransfer();
+    const token = new vscode.CancellationTokenSource().token;
+    await provider.handleDrag([{ kind: 'item', item }], dt, token);
+
+    assert.strictEqual(dt.get(DND_MIME_TYPE), undefined);
   });
 });

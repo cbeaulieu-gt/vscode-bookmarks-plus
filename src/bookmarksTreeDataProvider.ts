@@ -22,7 +22,7 @@ function repoIdentity(repoName: string | undefined): { key: string; label: strin
   return { key: `repo:${repoName}`, label: repoName };
 }
 
-export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<BookmarkNode> {
+export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<BookmarkNode>, vscode.TreeDragAndDropController<BookmarkNode> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<BookmarkNode | undefined | void>();
   readonly onDidChangeTreeData: vscode.Event<BookmarkNode | undefined | void> = this._onDidChangeTreeData.event;
 
@@ -36,6 +36,62 @@ export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<Bookma
       this.cache.invalidateAll();
       this._onDidChangeTreeData.fire();
     });
+  }
+
+  readonly dropMimeTypes = [DND_MIME_TYPE];
+  readonly dragMimeTypes = [DND_MIME_TYPE];
+
+  async handleDrag(
+    source: readonly BookmarkNode[],
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    if (this.groupMode === 'byRepo') {
+      return; // DnD disabled in group-by-repo mode (spec §4).
+    }
+    const ids = source.filter((n): n is Extract<BookmarkNode, { kind: 'item' }> => n.kind === 'item').map((n) => n.item.id);
+    if (ids.length === 0) {
+      return;
+    }
+    dataTransfer.set(DND_MIME_TYPE, new vscode.DataTransferItem(ids));
+  }
+
+  async handleDrop(
+    target: BookmarkNode | undefined,
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    if (this.groupMode === 'byRepo') {
+      return; // DnD disabled in group-by-repo mode (spec §4).
+    }
+    const transferItem = dataTransfer.get(DND_MIME_TYPE);
+    if (!transferItem) {
+      return;
+    }
+    const ids: string[] = transferItem.value;
+    const data = this.store.getAll();
+
+    let newCollectionId: string | null;
+    let newIndex: number;
+
+    if (!target) {
+      newCollectionId = null;
+      newIndex = data.items.filter((i) => i.collectionId === null).length;
+    } else if (target.kind === 'collection') {
+      newCollectionId = target.collection.id;
+      newIndex = data.items.filter((i) => i.collectionId === target.collection.id).length;
+    } else if (target.kind === 'item') {
+      newCollectionId = target.item.collectionId;
+      newIndex = target.item.order;
+    } else {
+      return; // repoGroup nodes are not a valid drop target.
+    }
+
+    for (const id of ids) {
+      // Calls the exact same BookmarkStore.moveItem() path every command handler uses (spec §2) —
+      // there is no special-case write path for drag-and-drop.
+      await this.store.moveItem(id, newCollectionId, newIndex);
+    }
   }
 
   getGroupMode(): GroupMode {
