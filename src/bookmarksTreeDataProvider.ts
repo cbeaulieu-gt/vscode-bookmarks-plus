@@ -7,12 +7,20 @@ import { FsGitCache } from './fsGitCache';
 export type GroupMode = 'default' | 'byRepo';
 
 export type BookmarkNode =
-  | { kind: 'collection'; collection: BookmarkCollection; repoLabel?: string }
+  | { kind: 'collection'; collection: BookmarkCollection; repoLabel?: string; repoKey?: string }
   | { kind: 'item'; item: BookmarkItem }
-  | { kind: 'repoGroup'; label: string };
+  | { kind: 'repoGroup'; label: string; repoKey: string };
 
 export const DND_MIME_TYPE = 'application/vnd.code.tree.bookmarksview';
 export const UNKNOWN_REPO_LABEL = 'Unknown';
+const UNKNOWN_REPO_KEY = '\u0000unknown-repo\u0000';
+
+function repoIdentity(repoName: string | undefined): { key: string; label: string } {
+  if (repoName === undefined) {
+    return { key: UNKNOWN_REPO_KEY, label: UNKNOWN_REPO_LABEL };
+  }
+  return { key: `repo:${repoName}`, label: repoName };
+}
 
 export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<BookmarkNode> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<BookmarkNode | undefined | void>();
@@ -124,10 +132,66 @@ export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<Bookma
 
   // getChildrenByRepo is added in Task 8.
   private async getChildrenByRepo(
-    _node: BookmarkNode | undefined,
-    _items: BookmarkItem[],
-    _collections: BookmarkCollection[]
+    node: BookmarkNode | undefined,
+    items: BookmarkItem[],
+    collections: BookmarkCollection[]
   ): Promise<BookmarkNode[]> {
+    if (!node) {
+      const repos = new Map<string, string>();
+      for (const item of items) {
+        const entry = await this.cache.get(item.uri);
+        const identity = repoIdentity(entry.repoName);
+        repos.set(identity.key, identity.label);
+      }
+      return [...repos]
+        .sort(([keyA, labelA], [keyB, labelB]) => {
+          if (keyA === UNKNOWN_REPO_KEY) return 1;
+          if (keyB === UNKNOWN_REPO_KEY) return -1;
+          return labelA.localeCompare(labelB);
+        })
+        .map(([repoKey, label]) => ({ kind: 'repoGroup', label, repoKey }));
+    }
+
+    if (node.kind === 'repoGroup') {
+      const itemsInRepo: BookmarkItem[] = [];
+      for (const item of items) {
+        const entry = await this.cache.get(item.uri);
+        if (repoIdentity(entry.repoName).key === node.repoKey) {
+          itemsInRepo.push(item);
+        }
+      }
+      const collectionIdsInRepo = new Set(
+        itemsInRepo.map((i) => i.collectionId).filter((id): id is string => id !== null)
+      );
+      const collectionNodes: BookmarkNode[] = collections
+        .filter((c) => collectionIdsInRepo.has(c.id))
+        .sort((a, b) => a.order - b.order)
+        .map((collection) => ({
+          kind: 'collection',
+          collection,
+          repoLabel: node.label,
+          repoKey: node.repoKey
+        }));
+      const rootItemNodes: BookmarkNode[] = itemsInRepo
+        .filter((i) => i.collectionId === null)
+        .sort((a, b) => a.order - b.order)
+        .map((item) => ({ kind: 'item', item }));
+      return [...collectionNodes, ...rootItemNodes];
+    }
+
+    if (node.kind === 'collection') {
+      const repoKey = node.repoKey ?? UNKNOWN_REPO_KEY;
+      const candidates = items.filter((i) => i.collectionId === node.collection.id);
+      const matched: BookmarkItem[] = [];
+      for (const item of candidates) {
+        const entry = await this.cache.get(item.uri);
+        if (repoIdentity(entry.repoName).key === repoKey) {
+          matched.push(item);
+        }
+      }
+      return matched.sort((a, b) => a.order - b.order).map((item) => ({ kind: 'item', item }));
+    }
+
     return [];
   }
 }

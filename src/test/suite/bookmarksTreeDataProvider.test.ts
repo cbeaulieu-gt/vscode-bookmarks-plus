@@ -105,3 +105,80 @@ suite('BookmarksTreeDataProvider - default mode', () => {
     assert.strictEqual(resolveCalls, 2, 'the cache must be invalidated on onBookmarksChanged');
   });
 });
+
+suite('BookmarksTreeDataProvider - group-by-repo mode', () => {
+  test('an item with no resolvable repo falls into the Unknown group without throwing', async () => {
+    const { store, provider } = makeProvider(async () => ({ exists: true, repoName: undefined }));
+    provider.setGroupMode('byRepo');
+    await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual(roots[0].kind, 'repoGroup');
+    assert.strictEqual((roots[0] as { label: string }).label, 'Unknown');
+  });
+
+  test('a broken item also falls into the Unknown group in group-by-repo mode', async () => {
+    const { store, provider } = makeProvider(async () => ({ exists: false }));
+    provider.setGroupMode('byRepo');
+    await store.addItem({ type: 'file', uri: 'file:///missing.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual((roots[0] as { label: string }).label, 'Unknown');
+  });
+
+  test('degrades to an all-Unknown render (no throw) when no active git repository is found', async () => {
+    const { store, provider } = makeProvider(async () => ({ exists: true })); // simulates vscode.git unavailable
+    provider.setGroupMode('byRepo');
+    await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 1);
+    assert.strictEqual((roots[0] as { label: string }).label, 'Unknown');
+  });
+
+  test('groups items under their resolved repo, nested by collection, and each repo only sees its own items', async () => {
+    const { store, provider } = makeProvider(async (uri) => ({
+      exists: true,
+      repoName: uri.includes('repo-a') ? 'repo-a' : 'repo-b'
+    }));
+    provider.setGroupMode('byRepo');
+
+    const collection = await store.addCollection('Work');
+    await store.addItem({ type: 'file', uri: 'file:///repo-a/x.txt', collectionId: collection.id });
+    await store.addItem({ type: 'file', uri: 'file:///repo-b/y.txt', collectionId: collection.id });
+    await store.addItem({ type: 'file', uri: 'file:///repo-a/z.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 2);
+
+    const repoA = roots.find((n) => (n as { label: string }).label === 'repo-a')!;
+    const repoAChildren = await provider.getChildren(repoA);
+    // repo-a has one collection-with-items and one root item.
+    assert.strictEqual(repoAChildren.length, 2);
+    const repoACollection = repoAChildren.find((n) => n.kind === 'collection')!;
+
+    const itemsInRepoACollection = await provider.getChildren(repoACollection);
+    assert.strictEqual(itemsInRepoACollection.length, 1);
+    assert.strictEqual((itemsInRepoACollection[0] as { item: { uri: string } }).item.uri, 'file:///repo-a/x.txt');
+  });
+
+  test('a real repository literally named "Unknown" does not merge with the unresolved fallback bucket', async () => {
+    const { store, provider } = makeProvider(async (uri) =>
+      uri.includes('real-repo') ? { exists: true, repoName: 'Unknown' } : { exists: true, repoName: undefined }
+    );
+    provider.setGroupMode('byRepo');
+    await store.addItem({ type: 'file', uri: 'file:///real-repo/a.txt' });
+    await store.addItem({ type: 'file', uri: 'file:///no-repo/b.txt' });
+
+    const roots = await provider.getChildren();
+    assert.strictEqual(roots.length, 2, 'real repo named Unknown and the unresolved fallback must be distinct groups');
+    assert.ok(roots.every((n) => (n as { label: string }).label === 'Unknown'));
+
+    const childCounts = await Promise.all(roots.map((r) => provider.getChildren(r)));
+    const counts = childCounts.map((c) => c.length).sort();
+    assert.deepStrictEqual(counts, [1, 1], 'each group must contain exactly its own item, not a merged pair');
+  });
+});
