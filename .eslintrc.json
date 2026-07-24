@@ -17,7 +17,7 @@
   "rules": {
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { "args": "all", "argsIgnorePattern": "^context$" }
+      { "args": "all", "argsIgnorePattern": "^(context|_)" }
     ]
   }
 }
