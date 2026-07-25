@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { BookmarkStore } from './bookmarkStore';
-import { BookmarkNode } from './bookmarksTreeDataProvider';
+import {
+  BookmarkNode,
+  BookmarksTreeDataProvider
+} from './bookmarksTreeDataProvider';
 
 export interface Prompter {
   showInputBox(options: vscode.InputBoxOptions): Thenable<string | undefined>;
@@ -188,5 +191,21 @@ export function registerCollectionCommands(
       'bookmarks.moveToCollection',
       createMoveToCollectionHandler(store, prompter)
     )
+  );
+}
+
+export function registerViewCommands(
+  context: vscode.ExtensionContext,
+  provider: BookmarksTreeDataProvider
+): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('bookmarks.toggleGroupByRepo', () => {
+      provider.setGroupMode(
+        provider.getGroupMode() === 'default' ? 'byRepo' : 'default'
+      );
+    }),
+    vscode.commands.registerCommand('bookmarks.refresh', () => {
+      provider.refresh();
+    })
   );
 }
