@@ -5,6 +5,7 @@ All notable changes to the "Bookmarks Plus" extension are documented in this fil
 ## [0.1.0] - Unreleased
 
 ### Added
+
 - Bookmark files and folders (not just lines) per workspace, for single-root and multi-root workspaces.
 - Collections: group bookmarks, rename and delete collections (deleting ungroups rather than deletes items).
 - Drag-and-drop reordering and cross-collection moves.

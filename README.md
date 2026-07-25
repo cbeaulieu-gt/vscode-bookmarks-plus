@@ -16,7 +16,7 @@ See `docs/superpowers/specs/` for the design spec.
 
 ## Requirements
 
-None beyond VS Code itself. The repo-name badge uses the built-in `vscode.git` extension when it's enabled; the extension works without it, just without badges.
+Requires VS Code 1.85.0 or later. The repo-name badge uses the built-in `vscode.git` extension when it's enabled; the extension works without it, just without badges.
 
 ## Installation
 
