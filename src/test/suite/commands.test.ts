@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { BookmarkStore } from '../../bookmarkStore';
-import { BookmarkNode } from '../../bookmarksTreeDataProvider';
+import { BookmarkNode, BookmarksTreeDataProvider } from '../../bookmarksTreeDataProvider';
+import { FsGitCache } from '../../fsGitCache';
 import { BookmarkItem } from '../../types';
 import {
   createAddFileHandler,
@@ -12,7 +13,8 @@ import {
   createNewCollectionHandler,
   createRenameCollectionHandler,
   createDeleteCollectionHandler,
-  createMoveToCollectionHandler
+  createMoveToCollectionHandler,
+  registerViewCommands
 } from '../../commands';
 import { FakeMemento } from './fixtures';
 
@@ -260,5 +262,49 @@ suite('commands - collections', () => {
     await createMoveToCollectionHandler(store, prompter)(nonItemNode);
 
     assert.strictEqual(quickPickCalled, false, 'must not prompt when there is no item to move');
+  });
+});
+
+suite('commands - view (toggleGroupByRepo / refresh)', () => {
+  test('toggleGroupByRepo flips between default and byRepo', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const cache = new FsGitCache(async () => ({ exists: true }));
+    const provider = new BookmarksTreeDataProvider(store, cache);
+    const subscriptions: vscode.Disposable[] = [];
+    registerViewCommands({ subscriptions } as unknown as vscode.ExtensionContext, provider);
+
+    try {
+      assert.strictEqual(provider.getGroupMode(), 'default');
+      await vscode.commands.executeCommand('bookmarks.toggleGroupByRepo');
+      assert.strictEqual(provider.getGroupMode(), 'byRepo');
+      await vscode.commands.executeCommand('bookmarks.toggleGroupByRepo');
+      assert.strictEqual(provider.getGroupMode(), 'default');
+    } finally {
+      subscriptions.forEach((d) => d.dispose());
+    }
+  });
+
+  test('refresh invalidates the cache so the next render re-resolves', async () => {
+    let resolveCalls = 0;
+    const store = new BookmarkStore(new FakeMemento());
+    const cache = new FsGitCache(async () => {
+      resolveCalls++;
+      return { exists: true };
+    });
+    const provider = new BookmarksTreeDataProvider(store, cache);
+    const subscriptions: vscode.Disposable[] = [];
+    registerViewCommands({ subscriptions } as unknown as vscode.ExtensionContext, provider);
+
+    try {
+      const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+      await provider.getTreeItem({ kind: 'item', item });
+      assert.strictEqual(resolveCalls, 1);
+
+      await vscode.commands.executeCommand('bookmarks.refresh');
+      await provider.getTreeItem({ kind: 'item', item });
+      assert.strictEqual(resolveCalls, 2);
+    } finally {
+      subscriptions.forEach((d) => d.dispose());
+    }
   });
 });
