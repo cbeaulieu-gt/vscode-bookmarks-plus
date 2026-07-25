@@ -248,6 +248,30 @@ suite('commands - collections', () => {
     assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, collection.id);
   });
 
+  test('moveToCollection handler reports a duplicate and leaves the item in its collection', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const uri = 'file:///a.txt';
+    const item = await store.addItem({ type: 'file', uri });
+    await store.addItem({ type: 'file', uri, collectionId: collection.id });
+    const messages: string[] = [];
+    const prompter = makePrompter({
+      showQuickPick: async (items) =>
+        items.find((quickPickItem) => quickPickItem.label === 'Work'),
+      showInfo: async (message) => {
+        messages.push(message);
+      }
+    });
+
+    await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
+
+    assert.deepStrictEqual(messages, ['This item is already bookmarked.']);
+    assert.strictEqual(
+      store.getAll().items.find((storedItem) => storedItem.id === item.id)!.collectionId,
+      null
+    );
+  });
+
   test('moveToCollection handler distinguishes collections with duplicate names by id', async () => {
     const store = new BookmarkStore(new FakeMemento());
     await store.addCollection('Work');

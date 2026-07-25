@@ -148,7 +148,14 @@ export function createMoveToCollectionHandler(
     const siblingCount = data.items.filter(
       (item) => item.collectionId === pick.id
     ).length;
-    await store.moveItem(node.item.id, pick.id, siblingCount);
+    try {
+      await store.moveItem(node.item.id, pick.id, siblingCount);
+    } catch (error: unknown) {
+      if (!(error instanceof DuplicateBookmarkError)) {
+        throw error;
+      }
+      await prompter.showInfo('This item is already bookmarked.');
+    }
   };
 }
 

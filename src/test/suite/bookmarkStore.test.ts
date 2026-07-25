@@ -180,6 +180,31 @@ suite('BookmarkStore - moveItem', () => {
     assert.strictEqual(remainingRoot[0].order, 0);
   });
 
+  test('moving into a collection with the same uri rejects without mutating either collection', async () => {
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento);
+    const source = await store.addCollection('Source');
+    const target = await store.addCollection('Target');
+    const uri = 'file:///a.txt';
+    const movingItem = await store.addItem({ type: 'file', uri, collectionId: source.id });
+    await store.addItem({ type: 'file', uri, collectionId: target.id });
+    const itemsBeforeMove = structuredClone(store.getAll().items);
+    const updateCallsBeforeMove = memento.updateCallCount;
+
+    await assert.rejects(
+      () => store.moveItem(movingItem.id, target.id, 0),
+      (error: unknown) => {
+        assert.ok(error instanceof DuplicateBookmarkError);
+        assert.strictEqual(error.uri, uri);
+        assert.strictEqual(error.collectionId, target.id);
+        return true;
+      }
+    );
+
+    assert.deepStrictEqual(store.getAll().items, itemsBeforeMove);
+    assert.strictEqual(memento.updateCallCount, updateCallsBeforeMove);
+  });
+
   test('moveItem on an unknown id is a no-op', async () => {
     const store = new BookmarkStore(new FakeMemento());
     await store.addItem({ type: 'file', uri: 'file:///a.txt' });
@@ -277,6 +302,36 @@ suite('BookmarkStore - collections', () => {
     const byId = (id: string) => data.items.find((i) => i.id === id)!;
     const orders = [byId(rootItem.id).order, byId(grouped.id).order].sort((a, b) => a - b);
     assert.deepStrictEqual(orders, [0, 1]);
+  });
+
+  test('deleteCollection keeps an existing root item instead of a colliding orphan', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const duplicateUri = 'file:///same.txt';
+    const rootItem = await store.addItem({ type: 'file', uri: duplicateUri });
+    const rootItemBeforeDelete = structuredClone(rootItem);
+    const collection = await store.addCollection('Work');
+    await store.addItem({
+      type: 'folder',
+      uri: duplicateUri,
+      collectionId: collection.id
+    });
+    await store.addItem({
+      type: 'file',
+      uri: 'file:///unique.txt',
+      collectionId: collection.id
+    });
+
+    await store.deleteCollection(collection.id);
+
+    const rootItems = store.getAll().items
+      .filter((item) => item.collectionId === null)
+      .sort((a, b) => a.order - b.order);
+    assert.strictEqual(rootItems.length, 2);
+    assert.deepStrictEqual(
+      rootItems.map((item) => item.uri),
+      [duplicateUri, 'file:///unique.txt']
+    );
+    assert.deepStrictEqual(rootItems[0], rootItemBeforeDelete);
   });
 
   test('deleteCollection preserves item order established by moveItem when ungrouping', async () => {
