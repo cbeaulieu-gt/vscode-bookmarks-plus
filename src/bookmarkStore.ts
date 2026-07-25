@@ -167,9 +167,16 @@ export class BookmarkStore {
     const orphanedItems = this.data.items
       .filter((i) => i.collectionId === id)
       .sort((a, b) => a.order - b.order);
+    const acceptedOrphanUris = new Set<string>();
     const collidingOrphanIds = new Set(
       orphanedItems
-        .filter((item) => this.hasDuplicateBookmark(item.uri, null))
+        .filter((item) => {
+          if (this.hasDuplicateBookmark(item.uri, null) || acceptedOrphanUris.has(item.uri)) {
+            return true;
+          }
+          acceptedOrphanUris.add(item.uri);
+          return false;
+        })
         .map((item) => item.id)
     );
 

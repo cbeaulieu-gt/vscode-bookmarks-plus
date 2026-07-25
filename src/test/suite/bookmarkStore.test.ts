@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { BookmarkStore, DuplicateBookmarkError } from '../../bookmarkStore';
+import { BookmarkData } from '../../types';
 import { FakeMemento, FakeOutput } from './fixtures';
 
 suite('BookmarkStore - load and core CRUD', () => {
@@ -302,6 +303,31 @@ suite('BookmarkStore - collections', () => {
     const byId = (id: string) => data.items.find((i) => i.id === id)!;
     const orders = [byId(rootItem.id).order, byId(grouped.id).order].sort((a, b) => a - b);
     assert.deepStrictEqual(orders, [0, 1]);
+  });
+
+  test('deleteCollection keeps the earliest orphan when legacy data contains duplicate uris', async () => {
+    const duplicateUri = 'file:///duplicate.txt';
+    const collectionId = 'legacy-collection';
+    const data: BookmarkData = {
+      version: 1,
+      items: [
+        { id: 'root', type: 'file', uri: 'file:///root.txt', collectionId: null, order: 0 },
+        { id: 'later', type: 'folder', uri: duplicateUri, collectionId, order: 1 },
+        { id: 'earliest', type: 'file', uri: duplicateUri, collectionId, order: 0 }
+      ],
+      collections: [{ id: collectionId, name: 'Legacy', order: 0 }]
+    };
+    const store = new BookmarkStore(new FakeMemento({ 'bookmarks.data': data }));
+
+    await store.deleteCollection(collectionId);
+
+    const duplicateRootItems = store.getAll().items.filter(
+      (item) => item.collectionId === null && item.uri === duplicateUri
+    );
+    assert.strictEqual(duplicateRootItems.length, 1);
+    assert.strictEqual(duplicateRootItems[0].id, 'earliest');
+    assert.strictEqual(duplicateRootItems[0].order, 1);
+    assert.ok(store.getAll().items.some((item) => item.id === 'root' && item.collectionId === null));
   });
 
   test('deleteCollection keeps an existing root item instead of a colliding orphan', async () => {
