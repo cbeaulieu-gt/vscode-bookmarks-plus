@@ -20,6 +20,16 @@ export interface AddItemInput {
   collectionId?: string | null;
 }
 
+export class DuplicateBookmarkError extends Error {
+  constructor(
+    readonly uri: string,
+    readonly collectionId: string | null
+  ) {
+    super('Bookmark already exists in this collection.');
+    this.name = 'DuplicateBookmarkError';
+  }
+}
+
 const noopOutput: OutputSink = { appendLine: () => {} };
 
 export class BookmarkStore {
@@ -63,6 +73,12 @@ export class BookmarkStore {
 
   async addItem(input: AddItemInput): Promise<BookmarkItem> {
     const collectionId = input.collectionId ?? null;
+    const duplicate = this.data.items.some(
+      (item) => item.uri === input.uri && item.collectionId === collectionId
+    );
+    if (duplicate) {
+      throw new DuplicateBookmarkError(input.uri, collectionId);
+    }
     const siblingCount = this.data.items.filter((i) => i.collectionId === collectionId).length;
     const item: BookmarkItem = {
       id: randomUUID(),

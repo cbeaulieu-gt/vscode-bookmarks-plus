@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { BookmarkStore } from '../../bookmarkStore';
+import { BookmarkStore, DuplicateBookmarkError } from '../../bookmarkStore';
 import { FakeMemento, FakeOutput } from './fixtures';
 
 suite('BookmarkStore - load and core CRUD', () => {
@@ -40,6 +40,59 @@ suite('BookmarkStore - load and core CRUD', () => {
     const second = await store.addItem({ type: 'file', uri: 'file:///b.txt', collectionId });
     assert.strictEqual(first.order, 0);
     assert.strictEqual(second.order, 1);
+  });
+
+  test('addItem rejects a duplicate uri in the root collection without adding another item', async () => {
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento);
+    const input = { type: 'file' as const, uri: 'file:///a.txt' };
+    let fireCount = 0;
+    store.onBookmarksChanged(() => { fireCount++; });
+    await store.addItem(input);
+    const updateCallsAfterFirstAdd = memento.updateCallCount;
+
+    await assert.rejects(
+      () => store.addItem({ ...input, collectionId: null }),
+      (error: unknown) => {
+        assert.ok(error instanceof DuplicateBookmarkError);
+        assert.strictEqual(error.uri, input.uri);
+        assert.strictEqual(error.collectionId, null);
+        return true;
+      }
+    );
+
+    assert.strictEqual(store.getAll().items.length, 1);
+    assert.strictEqual(memento.updateCallCount, updateCallsAfterFirstAdd);
+    assert.strictEqual(fireCount, 1);
+  });
+
+  test('addItem rejects a duplicate uri and collectionId even when the item type differs', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const uri = 'file:///a.txt';
+    await store.addItem({ type: 'file', uri, collectionId: collection.id });
+
+    await assert.rejects(
+      () => store.addItem({ type: 'folder', uri, collectionId: collection.id }),
+      (error: unknown) => {
+        assert.ok(error instanceof DuplicateBookmarkError);
+        assert.strictEqual(error.collectionId, collection.id);
+        return true;
+      }
+    );
+
+    assert.strictEqual(store.getAll().items.length, 1);
+  });
+
+  test('addItem allows the same uri in a different collection', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const uri = 'file:///a.txt';
+
+    await store.addItem({ type: 'file', uri });
+    await store.addItem({ type: 'file', uri, collectionId: collection.id });
+
+    assert.strictEqual(store.getAll().items.length, 2);
   });
 
   test('multi-root URI resolution: the stored uri is the absolute URI verbatim, regardless of workspace root', async () => {

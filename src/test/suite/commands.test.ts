@@ -23,6 +23,7 @@ function makePrompter(overrides: Partial<Prompter> = {}): Prompter {
     showInputBox: async () => undefined,
     showQuickPick: async () => undefined,
     showWarningConfirm: async () => false,
+    showInfo: async () => {},
     ...overrides
   };
 }
@@ -31,7 +32,7 @@ suite('commands - addFile / addFolder / remove / reveal', () => {
   test('addFile handler adds a root-level file bookmark for the given uri', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const uri = vscode.Uri.file('/workspace/a.txt');
-    await createAddFileHandler(store)(uri);
+    await createAddFileHandler(store, makePrompter())(uri);
 
     const items = store.getAll().items;
     assert.strictEqual(items.length, 1);
@@ -42,11 +43,53 @@ suite('commands - addFile / addFolder / remove / reveal', () => {
   test('addFolder handler adds a root-level folder bookmark for the given uri', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const uri = vscode.Uri.file('/workspace/dir');
-    await createAddFolderHandler(store)(uri);
+    await createAddFolderHandler(store, makePrompter())(uri);
 
     const items = store.getAll().items;
     assert.strictEqual(items.length, 1);
     assert.strictEqual(items[0].type, 'folder');
+  });
+
+  test('addFile handler notifies exactly once for a duplicate and not for a normal add', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const uri = vscode.Uri.file('/workspace/a.txt');
+    const messages: string[] = [];
+    const prompter = makePrompter({
+      showInfo: async (message) => {
+        messages.push(message);
+      }
+    });
+    const handler = createAddFileHandler(store, prompter);
+
+    await handler(uri);
+    assert.strictEqual(messages.length, 0);
+
+    await handler(uri);
+
+    assert.strictEqual(store.getAll().items.length, 1);
+    assert.strictEqual(messages.length, 1);
+    assert.match(messages[0], /already bookmarked/i);
+  });
+
+  test('addFolder handler notifies exactly once for a duplicate and not for a normal add', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const uri = vscode.Uri.file('/workspace/dir');
+    const messages: string[] = [];
+    const prompter = makePrompter({
+      showInfo: async (message) => {
+        messages.push(message);
+      }
+    });
+    const handler = createAddFolderHandler(store, prompter);
+
+    await handler(uri);
+    assert.strictEqual(messages.length, 0);
+
+    await handler(uri);
+
+    assert.strictEqual(store.getAll().items.length, 1);
+    assert.strictEqual(messages.length, 1);
+    assert.match(messages[0], /already bookmarked/i);
   });
 
   test('remove handler deletes the targeted item and ignores non-item nodes', async () => {

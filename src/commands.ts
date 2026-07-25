@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BookmarkStore } from './bookmarkStore';
+import { BookmarkStore, DuplicateBookmarkError } from './bookmarkStore';
 import {
   BookmarkNode,
   BookmarksTreeDataProvider
@@ -12,21 +12,40 @@ export interface Prompter {
     options: vscode.QuickPickOptions
   ): Thenable<T | undefined>;
   showWarningConfirm(message: string, confirmLabel: string): Thenable<boolean>;
+  showInfo(message: string): Thenable<unknown>;
+}
+
+async function addBookmark(
+  store: BookmarkStore,
+  prompter: Pick<Prompter, 'showInfo'>,
+  type: 'file' | 'folder',
+  uri: vscode.Uri
+): Promise<void> {
+  try {
+    await store.addItem({ type, uri: uri.toString() });
+  } catch (error: unknown) {
+    if (!(error instanceof DuplicateBookmarkError)) {
+      throw error;
+    }
+    await prompter.showInfo('This item is already bookmarked.');
+  }
 }
 
 export function createAddFileHandler(
-  store: BookmarkStore
+  store: BookmarkStore,
+  prompter: Pick<Prompter, 'showInfo'>
 ): (uri: vscode.Uri) => Promise<void> {
   return async (uri: vscode.Uri): Promise<void> => {
-    await store.addItem({ type: 'file', uri: uri.toString() });
+    await addBookmark(store, prompter, 'file', uri);
   };
 }
 
 export function createAddFolderHandler(
-  store: BookmarkStore
+  store: BookmarkStore,
+  prompter: Pick<Prompter, 'showInfo'>
 ): (uri: vscode.Uri) => Promise<void> {
   return async (uri: vscode.Uri): Promise<void> => {
-    await store.addItem({ type: 'folder', uri: uri.toString() });
+    await addBookmark(store, prompter, 'folder', uri);
   };
 }
 
@@ -137,9 +156,18 @@ export function registerAddCommands(
   context: vscode.ExtensionContext,
   store: BookmarkStore
 ): void {
+  const prompter: Pick<Prompter, 'showInfo'> = {
+    showInfo: (message) => vscode.window.showInformationMessage(message)
+  };
   context.subscriptions.push(
-    vscode.commands.registerCommand('bookmarks.addFile', createAddFileHandler(store)),
-    vscode.commands.registerCommand('bookmarks.addFolder', createAddFolderHandler(store))
+    vscode.commands.registerCommand(
+      'bookmarks.addFile',
+      createAddFileHandler(store, prompter)
+    ),
+    vscode.commands.registerCommand(
+      'bookmarks.addFolder',
+      createAddFolderHandler(store, prompter)
+    )
   );
 }
 
@@ -172,7 +200,8 @@ export function registerCollectionCommands(
         confirmLabel
       );
       return result === confirmLabel;
-    }
+    },
+    showInfo: (message) => vscode.window.showInformationMessage(message)
   };
   context.subscriptions.push(
     vscode.commands.registerCommand(
