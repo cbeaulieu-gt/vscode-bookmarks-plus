@@ -7,9 +7,23 @@ import {
   createAddFileHandler,
   createAddFolderHandler,
   createRemoveHandler,
-  createRevealHandler
+  createRevealHandler,
+  Prompter,
+  createNewCollectionHandler,
+  createRenameCollectionHandler,
+  createDeleteCollectionHandler,
+  createMoveToCollectionHandler
 } from '../../commands';
 import { FakeMemento } from './fixtures';
+
+function makePrompter(overrides: Partial<Prompter> = {}): Prompter {
+  return {
+    showInputBox: async () => undefined,
+    showQuickPick: async () => undefined,
+    showWarningConfirm: async () => false,
+    ...overrides
+  };
+}
 
 suite('commands - addFile / addFolder / remove / reveal', () => {
   test('addFile handler adds a root-level file bookmark for the given uri', async () => {
@@ -70,5 +84,181 @@ suite('commands - addFile / addFolder / remove / reveal', () => {
     const nonItemNode: BookmarkNode = { kind: 'repoGroup', label: 'x', repoKey: 'x' };
     await handler(nonItemNode);
     assert.strictEqual(called, false);
+  });
+});
+
+suite('commands - collections', () => {
+  test('newCollection handler creates a collection with the prompted name', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const prompter = makePrompter({ showInputBox: async () => 'Work' });
+
+    await createNewCollectionHandler(store, prompter)();
+
+    const collections = store.getAll().collections;
+    assert.strictEqual(collections.length, 1);
+    assert.strictEqual(collections[0].name, 'Work');
+  });
+
+  test('newCollection handler does nothing when the prompt is cancelled', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await createNewCollectionHandler(store, makePrompter())();
+    assert.strictEqual(store.getAll().collections.length, 0);
+  });
+
+  test('renameCollection handler renames the targeted collection', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const prompter = makePrompter({ showInputBox: async () => 'Work Stuff' });
+
+    await createRenameCollectionHandler(store, prompter)({ kind: 'collection', collection });
+
+    assert.strictEqual(store.getAll().collections[0].name, 'Work Stuff');
+  });
+
+  test('renameCollection handler does nothing when the prompt is cancelled', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+
+    await createRenameCollectionHandler(store, makePrompter())({ kind: 'collection', collection });
+
+    assert.strictEqual(store.getAll().collections[0].name, 'Work', 'cancelled prompt must not rename');
+  });
+
+  test('renameCollection handler ignores non-collection nodes', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    let inputBoxCalled = false;
+    const prompter = makePrompter({
+      showInputBox: async () => {
+        inputBoxCalled = true;
+        return 'Whatever';
+      }
+    });
+
+    await createRenameCollectionHandler(store, prompter)({ kind: 'item', item });
+    assert.strictEqual(store.getAll().collections.length, 0);
+    assert.strictEqual(inputBoxCalled, false, 'must not prompt for a non-collection node');
+  });
+
+  test('deleteCollection handler does nothing when the confirmation is declined', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    const declining = makePrompter({ showWarningConfirm: async () => false });
+
+    await createDeleteCollectionHandler(store, declining)({ kind: 'collection', collection });
+
+    assert.strictEqual(store.getAll().collections.length, 1, 'declined confirmation must not delete');
+    assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, collection.id);
+  });
+
+  test('deleteCollection handler deletes the collection and ungroups its items after confirmation', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    const confirming = makePrompter({ showWarningConfirm: async () => true });
+
+    await createDeleteCollectionHandler(store, confirming)({ kind: 'collection', collection });
+
+    const data = store.getAll();
+    assert.strictEqual(data.collections.length, 0);
+    assert.strictEqual(
+      data.items.find((i) => i.id === item.id)!.collectionId,
+      null,
+      'items must be ungrouped, not deleted'
+    );
+  });
+
+  test('deleteCollection handler ignores non-collection nodes', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    let warningConfirmCalled = false;
+    const confirming = makePrompter({
+      showWarningConfirm: async () => {
+        warningConfirmCalled = true;
+        return true;
+      }
+    });
+
+    await createDeleteCollectionHandler(store, confirming)({ kind: 'item', item });
+
+    assert.strictEqual(store.getAll().items.length, 1, 'non-collection nodes must be a no-op');
+    assert.strictEqual(
+      warningConfirmCalled,
+      false,
+      'must not confirm deletion for a non-collection node'
+    );
+  });
+
+  test('moveToCollection handler moves the item into the chosen collection', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const prompter = makePrompter({
+      showQuickPick: async (items) => items.find((quickPickItem) => quickPickItem.label === 'Work')
+    });
+
+    await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
+
+    assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, collection.id);
+  });
+
+  test('moveToCollection handler distinguishes collections with duplicate names by id', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addCollection('Work');
+    const secondCollection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const prompter = makePrompter({
+      showQuickPick: async (items) =>
+        items.find(
+          (quickPickItem) =>
+            'id' in quickPickItem && quickPickItem.id === secondCollection.id
+        )
+    });
+
+    await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
+
+    assert.strictEqual(
+      store.getAll().items.find((storedItem) => storedItem.id === item.id)!.collectionId,
+      secondCollection.id
+    );
+  });
+
+  test('moveToCollection handler offers "Ungrouped" and moving to it clears collectionId', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    const prompter = makePrompter({
+      showQuickPick: async (items) =>
+        items.find((quickPickItem) => quickPickItem.label === 'Ungrouped')
+    });
+
+    await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
+
+    assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, null);
+  });
+
+  test('moveToCollection handler does nothing when the pick is cancelled', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await createMoveToCollectionHandler(store, makePrompter())({ kind: 'item', item });
+    assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, null);
+  });
+
+  test('moveToCollection handler ignores non-item nodes', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addCollection('Work');
+    const nonItemNode: BookmarkNode = { kind: 'repoGroup', label: 'x', repoKey: 'x' };
+    let quickPickCalled = false;
+    const prompter = makePrompter({
+      showQuickPick: async () => {
+        quickPickCalled = true;
+        return undefined;
+      }
+    });
+
+    await createMoveToCollectionHandler(store, prompter)(nonItemNode);
+
+    assert.strictEqual(quickPickCalled, false, 'must not prompt when there is no item to move');
   });
 });

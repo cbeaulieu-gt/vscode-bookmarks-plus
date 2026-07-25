@@ -4,3 +4,6 @@ dist/
 *.vsix
 .vscode-test/
 .worktrees/
+
+# Agent scratch files (per standards/scratch-files.md)
+.tmp/
