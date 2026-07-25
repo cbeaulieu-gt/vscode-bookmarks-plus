@@ -20,6 +20,16 @@ export interface AddItemInput {
   collectionId?: string | null;
 }
 
+export class DuplicateBookmarkError extends Error {
+  constructor(
+    readonly uri: string,
+    readonly collectionId: string | null
+  ) {
+    super('Bookmark already exists in this collection.');
+    this.name = 'DuplicateBookmarkError';
+  }
+}
+
 const noopOutput: OutputSink = { appendLine: () => {} };
 
 export class BookmarkStore {
@@ -57,12 +67,28 @@ export class BookmarkStore {
     });
   }
 
+  private hasDuplicateBookmark(
+    uri: string,
+    collectionId: string | null,
+    excludedItemId?: string
+  ): boolean {
+    return this.data.items.some(
+      (item) =>
+        item.id !== excludedItemId &&
+        item.uri === uri &&
+        item.collectionId === collectionId
+    );
+  }
+
   getAll(): BookmarkData {
     return this.data;
   }
 
   async addItem(input: AddItemInput): Promise<BookmarkItem> {
     const collectionId = input.collectionId ?? null;
+    if (this.hasDuplicateBookmark(input.uri, collectionId)) {
+      throw new DuplicateBookmarkError(input.uri, collectionId);
+    }
     const siblingCount = this.data.items.filter((i) => i.collectionId === collectionId).length;
     const item: BookmarkItem = {
       id: randomUUID(),
@@ -103,6 +129,9 @@ export class BookmarkStore {
     if (!item) {
       return;
     }
+    if (this.hasDuplicateBookmark(item.uri, newCollectionId, item.id)) {
+      throw new DuplicateBookmarkError(item.uri, newCollectionId);
+    }
     const oldCollectionId = item.collectionId;
 
     const oldSiblings = this.data.items.filter((i) => i.collectionId === oldCollectionId && i.id !== id);
@@ -135,17 +164,26 @@ export class BookmarkStore {
     if (!exists) {
       return;
     }
-    this.data.collections = this.data.collections.filter((c) => c.id !== id);
-    this.renumber(this.data.collections);
-
-    const nextOrder = this.data.items.filter((i) => i.collectionId === null).length;
     const orphanedItems = this.data.items
       .filter((i) => i.collectionId === id)
       .sort((a, b) => a.order - b.order);
-    orphanedItems.forEach((item, index) => {
-      item.collectionId = null;
-      item.order = nextOrder + index;
-    });
+    const collidingOrphanIds = new Set(
+      orphanedItems
+        .filter((item) => this.hasDuplicateBookmark(item.uri, null))
+        .map((item) => item.id)
+    );
+
+    this.data.collections = this.data.collections.filter((c) => c.id !== id);
+    this.renumber(this.data.collections);
+    this.data.items = this.data.items.filter((item) => !collidingOrphanIds.has(item.id));
+
+    const nextOrder = this.data.items.filter((i) => i.collectionId === null).length;
+    orphanedItems
+      .filter((item) => !collidingOrphanIds.has(item.id))
+      .forEach((item, index) => {
+        item.collectionId = null;
+        item.order = nextOrder + index;
+      });
 
     await this.persist();
   }
