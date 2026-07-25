@@ -4,7 +4,10 @@ import { BookmarkNode } from './bookmarksTreeDataProvider';
 
 export interface Prompter {
   showInputBox(options: vscode.InputBoxOptions): Thenable<string | undefined>;
-  showQuickPick(items: string[], options: vscode.QuickPickOptions): Thenable<string | undefined>;
+  showQuickPick<T extends vscode.QuickPickItem>(
+    items: T[],
+    options: vscode.QuickPickOptions
+  ): Thenable<T | undefined>;
   showWarningConfirm(message: string, confirmLabel: string): Thenable<boolean>;
 }
 
@@ -106,7 +109,7 @@ export function createMoveToCollectionHandler(
       return;
     }
     const data = store.getAll();
-    const options: { label: string; id: string | null }[] = [
+    const options: Array<vscode.QuickPickItem & { id: string | null }> = [
       { label: 'Ungrouped', id: null },
       ...data.collections.map((collection) => ({
         label: collection.name,
@@ -114,20 +117,16 @@ export function createMoveToCollectionHandler(
       }))
     ];
     const pick = await prompter.showQuickPick(
-      options.map((option) => option.label),
+      options,
       { placeHolder: 'Move bookmark to collection' }
     );
     if (pick === undefined) {
       return;
     }
-    const chosen = options.find((option) => option.label === pick);
-    if (!chosen) {
-      return;
-    }
     const siblingCount = data.items.filter(
-      (item) => item.collectionId === chosen.id
+      (item) => item.collectionId === pick.id
     ).length;
-    await store.moveItem(node.item.id, chosen.id, siblingCount);
+    await store.moveItem(node.item.id, pick.id, siblingCount);
   };
 }
 

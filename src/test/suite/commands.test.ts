@@ -127,11 +127,17 @@ suite('commands - collections', () => {
   test('renameCollection handler ignores non-collection nodes', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
-    const prompter = makePrompter({ showInputBox: async () => 'Whatever' });
+    let inputBoxCalled = false;
+    const prompter = makePrompter({
+      showInputBox: async () => {
+        inputBoxCalled = true;
+        return 'Whatever';
+      }
+    });
 
     await createRenameCollectionHandler(store, prompter)({ kind: 'item', item });
-    // No collections exist, so nothing to assert on except that this did not throw.
     assert.strictEqual(store.getAll().collections.length, 0);
+    assert.strictEqual(inputBoxCalled, false, 'must not prompt for a non-collection node');
   });
 
   test('deleteCollection handler does nothing when the confirmation is declined', async () => {
@@ -166,29 +172,66 @@ suite('commands - collections', () => {
   test('deleteCollection handler ignores non-collection nodes', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
-    const confirming = makePrompter({ showWarningConfirm: async () => true });
+    let warningConfirmCalled = false;
+    const confirming = makePrompter({
+      showWarningConfirm: async () => {
+        warningConfirmCalled = true;
+        return true;
+      }
+    });
 
     await createDeleteCollectionHandler(store, confirming)({ kind: 'item', item });
 
     assert.strictEqual(store.getAll().items.length, 1, 'non-collection nodes must be a no-op');
+    assert.strictEqual(
+      warningConfirmCalled,
+      false,
+      'must not confirm deletion for a non-collection node'
+    );
   });
 
   test('moveToCollection handler moves the item into the chosen collection', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const collection = await store.addCollection('Work');
     const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
-    const prompter = makePrompter({ showQuickPick: async () => 'Work' });
+    const prompter = makePrompter({
+      showQuickPick: async (items) => items.find((quickPickItem) => quickPickItem.label === 'Work')
+    });
 
     await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
 
     assert.strictEqual(store.getAll().items.find((i) => i.id === item.id)!.collectionId, collection.id);
   });
 
+  test('moveToCollection handler distinguishes collections with duplicate names by id', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addCollection('Work');
+    const secondCollection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const prompter = makePrompter({
+      showQuickPick: async (items) =>
+        items.find(
+          (quickPickItem) =>
+            'id' in quickPickItem && quickPickItem.id === secondCollection.id
+        )
+    });
+
+    await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
+
+    assert.strictEqual(
+      store.getAll().items.find((storedItem) => storedItem.id === item.id)!.collectionId,
+      secondCollection.id
+    );
+  });
+
   test('moveToCollection handler offers "Ungrouped" and moving to it clears collectionId', async () => {
     const store = new BookmarkStore(new FakeMemento());
     const collection = await store.addCollection('Work');
     const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
-    const prompter = makePrompter({ showQuickPick: async () => 'Ungrouped' });
+    const prompter = makePrompter({
+      showQuickPick: async (items) =>
+        items.find((quickPickItem) => quickPickItem.label === 'Ungrouped')
+    });
 
     await createMoveToCollectionHandler(store, prompter)({ kind: 'item', item });
 
@@ -210,7 +253,7 @@ suite('commands - collections', () => {
     const prompter = makePrompter({
       showQuickPick: async () => {
         quickPickCalled = true;
-        return 'Work';
+        return undefined;
       }
     });
 
