@@ -4,6 +4,10 @@
   "description": "Bookmark files and folders (not just lines) in a workspace, with collections and git-repo awareness.",
   "version": "0.1.0",
   "publisher": "cbeaulieu-gt",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cbeaulieu-gt/vscode-bookmarks-plus.git"
+  },
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
