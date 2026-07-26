@@ -11,7 +11,6 @@ See `docs/superpowers/specs/` for the design spec.
 - Group the view by git repository, with a dedicated "Unknown" group for anything unresolved.
 - Broken bookmarks (moved/deleted targets) show a warning icon instead of erroring.
 
-<!-- TODO: screenshot pending — see issue #33 -->
 ![Bookmarks Plus screenshot](images/screenshot.png)
 
 ## Requirements
