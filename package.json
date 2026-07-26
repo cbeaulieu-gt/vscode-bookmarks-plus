@@ -2,7 +2,7 @@
   "name": "vscode-bookmarks-plus",
   "displayName": "Bookmarks Plus",
   "description": "Bookmark files and folders (not just lines) in a workspace, with collections and git-repo awareness.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "cbeaulieu-gt",
   "repository": {
     "type": "git",
@@ -75,9 +75,13 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile",
     "test": "node ./out/test/runTest.js",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "vsce:package": "vsce package --no-dependencies",
+    "publish:stable": "node scripts/guard-channel.js stable && vsce publish",
+    "publish:prerelease": "node scripts/guard-channel.js prerelease && vsce publish --pre-release"
   },
   "devDependencies": {
+    "@vscode/vsce": "^2.24.0",
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.11.0",
     "@types/mocha": "^10.0.6",
