@@ -2,7 +2,7 @@
 
 All notable changes to the "Bookmarks Plus" extension are documented in this file.
 
-## [0.1.0] - Unreleased
+## [Unreleased]
 
 ### Added
 
