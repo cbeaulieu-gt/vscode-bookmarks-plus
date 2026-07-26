@@ -6,7 +6,7 @@
   "publisher": "cbeaulieu-gt",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cbeaulieu-gt/vscode-bookmarks-plus.git"
+    "url": "https://github.com/glitchwerks/vscode-bookmarks-plus.git"
   },
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
