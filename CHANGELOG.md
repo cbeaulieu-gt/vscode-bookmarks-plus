@@ -4,6 +4,8 @@ All notable changes to the "Bookmarks Plus" extension are documented in this fil
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-07-26
+
 ### Added
 
 - Bookmark files and folders (not just lines) per workspace, for single-root and multi-root workspaces.
