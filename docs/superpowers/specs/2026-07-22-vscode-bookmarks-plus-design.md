@@ -103,12 +103,13 @@ Each row renders as: icon (file or folder) + name + repo name as a dim descripti
 
 A broken bookmark (target path missing, checked on-demand via `fs.stat` at render time — no watcher) renders with a warning icon overlay and greyed text. There is no auto-fix; the user can only remove the entry.
 
-The view title bar has two buttons:
+The view title bar has three buttons:
 
 - `bookmarks.toggleGroupByRepo` — flips the render mode:
   - **Default:** collection → item
   - **Grouped by repo:** repo-root node → collection → item
 - `bookmarks.refresh` — manually invalidates the in-memory stat/repo cache described in [§2](#2-architecture) and forces a redraw (see also [§5](#5-commands)).
+- `bookmarks.newCollection` — prompts for a name and adds a new top-level collection (see [§5](#5-commands)).
 
 **Drag-and-drop is disabled in group-by-repo mode.** Reordering and re-grouping (both are `BookmarkStore.moveItem()` calls) are only available in the default (collection → item) mode. The `bookmarks.toggleGroupByRepo` button's tooltip notes this — grouped-by-repo is a read-oriented view; switch back to default mode to reorder or move items between collections.
 
@@ -128,7 +129,7 @@ Context menus:
 | `bookmarks.addFile` | Explorer context menu on a file | Command-palette registration is cut from v1 scope — see note below |
 | `bookmarks.addFolder` | Explorer context menu on a folder | Gated by the `explorerResourceIsFolder` when-clause; command-palette registration is cut from v1 scope — see note below |
 | `bookmarks.remove` | Tree item context menu + command palette | |
-| `bookmarks.reveal` | Tree item click or context menu + command palette | Calls `revealInExplorer` |
+| `bookmarks.reveal` | Folder-bookmark tree item click; "Reveal in Explorer" context menu (file or folder) + command palette | Calls `revealInExplorer`. File-bookmark clicks bypass this command — they open directly via `vscode.open` (see [§9 point 3](#9-implementation-notes-resolved-ambiguities)) |
 | `bookmarks.newCollection` | View title button + tree context menu + command palette | Prompts for a name |
 | `bookmarks.renameCollection` | Collection context menu + command palette | Prompts for a new name |
 | `bookmarks.deleteCollection` | Collection context menu + command palette | Confirm dialog; ungroups items, does not delete them |
