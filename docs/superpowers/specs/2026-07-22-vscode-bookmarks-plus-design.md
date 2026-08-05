@@ -178,3 +178,11 @@ Four cases are handled, and each degrades without surfacing an error dialog:
 - Semantic version in `package.json`.
 
 CI (GitHub Actions running tests plus `vsce package` on tag push) is noted as a fast-follow — not a blocker for the v1.0 milestone (tracked in #3).
+
+## 9. Implementation notes (resolved ambiguities)
+
+Extracted from the (now-deleted) implementation plan before removal, since these three points diverge from or sharpen this spec's wording and were not otherwise recorded. All are shipped in v1.0.
+
+1. **View-title button count is three, not two.** §4 above still says "the view title bar has two buttons" (`toggleGroupByRepo`, `refresh`), but §5's command trigger for `bookmarks.newCollection` lists "View title button + tree context menu + command palette." Resolved as **three** title-bar buttons — the §5 table is the more granular, per-command source of truth. Implemented in `package.json`'s `view/title` menu contributions.
+2. **Git-ready re-render mechanism.** §4 says the extension "fires `onBookmarksChanged` once" when the git API first becomes ready. But `BookmarkStore`'s public surface (`addItem`/`removeItem`/`moveItem`/`addCollection`/`renameCollection`/`deleteCollection`/`getAll`) has no force-fire method, and firing the store's event without a real mutation would misrepresent what the event means. Resolved by calling `BookmarksTreeDataProvider.refresh()` instead — it produces the identical externally observable effect (one cache invalidation, one redraw) via the mechanism §4 already specifies for the manual `bookmarks.refresh` command.
+3. **`bookmarks.reveal` vs. click-to-open.** §5 says `bookmarks.reveal` "Calls `revealInExplorer`" with trigger "Tree item click or context menu." §4's prose says file bookmarks *open in the editor* on click, only folder bookmarks *reveal* on click. Resolved: a **file** bookmark's `TreeItem.command` opens it directly (`vscode.open`), bypassing `bookmarks.reveal`; a **folder** bookmark's click goes through `bookmarks.reveal` (its only possible click target, per §5's "Folder click behavior" note); the **context-menu** "Reveal in Explorer" action (available on both types per §4) always goes through `bookmarks.reveal` → `revealInExplorer`.
