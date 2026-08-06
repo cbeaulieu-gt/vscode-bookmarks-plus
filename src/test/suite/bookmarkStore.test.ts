@@ -430,3 +430,110 @@ suite('BookmarkStore - schema migration', () => {
     assert.strictEqual(output.lines.length, 1);
   });
 });
+
+suite('BookmarkStore - descriptions', () => {
+  test('setItemDescription sets a trimmed description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+
+    await store.setItemDescription(item.id, '  the entrypoint  ');
+
+    assert.strictEqual(store.getAll().items[0].description, 'the entrypoint');
+  });
+
+  test('setItemDescription with an empty string clears the description entirely', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'note');
+
+    await store.setItemDescription(item.id, '');
+
+    const stored = store.getAll().items[0];
+    assert.strictEqual(stored.description, undefined);
+    assert.strictEqual('description' in stored, false, 'the key must be deleted, not set to ""');
+  });
+
+  test('setItemDescription with whitespace only also clears it', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'note');
+
+    await store.setItemDescription(item.id, '   ');
+
+    assert.strictEqual(store.getAll().items[0].description, undefined);
+  });
+
+  test('setItemDescription fires onBookmarksChanged exactly once per real change', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    let fireCount = 0;
+    store.onBookmarksChanged(() => { fireCount++; });
+
+    await store.setItemDescription(item.id, 'note');
+
+    assert.strictEqual(fireCount, 1);
+  });
+
+  test('setItemDescription is a no-op when the value is unchanged', async () => {
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento);
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'note');
+    const callsBefore = memento.updateCallCount;
+    let fireCount = 0;
+    store.onBookmarksChanged(() => { fireCount++; });
+
+    await store.setItemDescription(item.id, 'note');
+
+    assert.strictEqual(memento.updateCallCount, callsBefore);
+    assert.strictEqual(fireCount, 0);
+  });
+
+  test('setItemDescription on an unknown id is a no-op', async () => {
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento);
+    const callsBefore = memento.updateCallCount;
+    await store.setItemDescription('does-not-exist', 'note');
+    assert.strictEqual(memento.updateCallCount, callsBefore);
+  });
+
+  test('setCollectionDescription sets and clears a collection description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+
+    await store.setCollectionDescription(collection.id, 'work-related bookmarks');
+    assert.strictEqual(store.getAll().collections[0].description, 'work-related bookmarks');
+
+    await store.setCollectionDescription(collection.id, '');
+    assert.strictEqual(store.getAll().collections[0].description, undefined);
+  });
+
+  test('setCollectionDescription on an unknown id is a no-op', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.setCollectionDescription('does-not-exist', 'note');
+    assert.strictEqual(store.getAll().collections.length, 0);
+  });
+
+  test('a description survives moveItem across collections', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'note');
+
+    await store.moveItem(item.id, collection.id, 0);
+
+    assert.strictEqual(store.getAll().items[0].description, 'note');
+  });
+
+  test('a description survives deleteCollection ungrouping', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt', collectionId: collection.id });
+    await store.setItemDescription(item.id, 'note');
+
+    await store.deleteCollection(collection.id);
+
+    assert.strictEqual(store.getAll().items[0].description, 'note');
+    assert.strictEqual(store.getAll().items[0].collectionId, null);
+  });
+});

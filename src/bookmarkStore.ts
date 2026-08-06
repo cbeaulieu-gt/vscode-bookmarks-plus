@@ -6,7 +6,8 @@ import {
   BookmarkItem,
   CURRENT_SCHEMA_VERSION,
   emptyBookmarkData,
-  isValidBookmarkData
+  isValidBookmarkData,
+  normalizeDescription
 } from './types';
 import { migrateBookmarkData } from './migrations';
 
@@ -173,6 +174,40 @@ export class BookmarkStore {
       return;
     }
     collection.name = name;
+    await this.persist();
+  }
+
+  async setItemDescription(id: string, description: string | undefined): Promise<void> {
+    const item = this.data.items.find((i) => i.id === id);
+    if (!item) {
+      return;
+    }
+    const next = normalizeDescription(description);
+    if (item.description === next) {
+      return;
+    }
+    if (next === undefined) {
+      delete item.description;
+    } else {
+      item.description = next;
+    }
+    await this.persist();
+  }
+
+  async setCollectionDescription(id: string, description: string | undefined): Promise<void> {
+    const collection = this.data.collections.find((c) => c.id === id);
+    if (!collection) {
+      return;
+    }
+    const next = normalizeDescription(description);
+    if (collection.description === next) {
+      return;
+    }
+    if (next === undefined) {
+      delete collection.description;
+    } else {
+      collection.description = next;
+    }
     await this.persist();
   }
 
