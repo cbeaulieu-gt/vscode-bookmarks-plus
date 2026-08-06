@@ -120,6 +120,9 @@ export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<Bookma
       const treeItem = new vscode.TreeItem(node.collection.name, vscode.TreeItemCollapsibleState.Collapsed);
       treeItem.contextValue = 'bookmarkCollection';
       treeItem.id = node.repoLabel ? `collection:${node.repoLabel}:${node.collection.id}` : `collection:${node.collection.id}`;
+      if (node.collection.description) {
+        treeItem.tooltip = node.collection.description;
+      }
       return treeItem;
     }
 
@@ -132,6 +135,12 @@ export class BookmarksTreeDataProvider implements vscode.TreeDataProvider<Bookma
     treeItem.id = `item:${bookmark.id}`;
     treeItem.contextValue = 'bookmarkItem';
     treeItem.resourceUri = uri;
+    if (bookmark.description) {
+      // TreeItem.description is already taken by the 'missing'/repo-name badge below,
+      // so the bookmark's own description goes in the tooltip. Setting a tooltip overrides
+      // VS Code's default path hover, so include the path here as well.
+      treeItem.tooltip = `${uri.fsPath}\n\n${bookmark.description}`;
+    }
 
     if (!entry.exists) {
       treeItem.iconPath = new vscode.ThemeIcon('warning');
