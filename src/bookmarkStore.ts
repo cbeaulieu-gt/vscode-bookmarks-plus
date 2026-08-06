@@ -4,9 +4,11 @@ import {
   BookmarkCollection,
   BookmarkData,
   BookmarkItem,
+  CURRENT_SCHEMA_VERSION,
   emptyBookmarkData,
   isValidBookmarkData
 } from './types';
+import { migrateBookmarkData } from './migrations';
 
 const STORAGE_KEY = 'bookmarks.data';
 
@@ -52,7 +54,22 @@ export class BookmarkStore {
       );
       return emptyBookmarkData();
     }
-    return stored;
+    if (stored.version === CURRENT_SCHEMA_VERSION) {
+      return stored;
+    }
+    try {
+      const migrated = migrateBookmarkData(stored);
+      this.output.appendLine(
+        `BookmarkStore: migrated stored bookmarks.data from schema version ${stored.version} to ${CURRENT_SCHEMA_VERSION}.`
+      );
+      return migrated;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(
+        `BookmarkStore: cannot read stored bookmarks.data (${message}) — starting from an empty state.`
+      );
+      return emptyBookmarkData();
+    }
   }
 
   private async persist(): Promise<void> {

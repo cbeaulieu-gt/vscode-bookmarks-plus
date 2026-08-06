@@ -6,7 +6,7 @@ import { FakeMemento, FakeOutput } from './fixtures';
 suite('BookmarkStore - load and core CRUD', () => {
   test('initializes empty data when storage is empty', () => {
     const store = new BookmarkStore(new FakeMemento());
-    assert.deepStrictEqual(store.getAll(), { version: 1, items: [], collections: [] });
+    assert.deepStrictEqual(store.getAll(), { version: 2, items: [], collections: [] });
   });
 
   test('recovers from malformed stored data without throwing, and logs a warning', () => {
@@ -14,14 +14,14 @@ suite('BookmarkStore - load and core CRUD', () => {
     const output = new FakeOutput();
     const store = new BookmarkStore(memento, output);
 
-    assert.deepStrictEqual(store.getAll(), { version: 1, items: [], collections: [] });
+    assert.deepStrictEqual(store.getAll(), { version: 2, items: [], collections: [] });
     assert.strictEqual(output.lines.length, 1);
   });
 
   test('recovers when the stored value is null', () => {
     const memento = new FakeMemento({ 'bookmarks.data': null });
     const store = new BookmarkStore(memento);
-    assert.deepStrictEqual(store.getAll(), { version: 1, items: [], collections: [] });
+    assert.deepStrictEqual(store.getAll(), { version: 2, items: [], collections: [] });
   });
 
   test('addItem assigns sequential order within the root parent', async () => {
@@ -380,5 +380,53 @@ suite('BookmarkStore - collections', () => {
     const store = new BookmarkStore(new FakeMemento());
     await store.deleteCollection('does-not-exist');
     assert.strictEqual(store.getAll().collections.length, 0);
+  });
+});
+
+suite('BookmarkStore - schema migration', () => {
+  const v1Stored = {
+    version: 1,
+    items: [{ id: 'i1', type: 'file', uri: 'file:///a.txt', collectionId: null, order: 0 }],
+    collections: [{ id: 'c1', name: 'Work', order: 0 }]
+  };
+
+  test('loads v1 workspaceState data as v2, with descriptions left undefined', () => {
+    const store = new BookmarkStore(new FakeMemento({ 'bookmarks.data': v1Stored }));
+    const data = store.getAll();
+
+    assert.strictEqual(data.version, 2);
+    assert.strictEqual(data.items.length, 1);
+    assert.strictEqual(data.items[0].id, 'i1');
+    assert.strictEqual(data.items[0].description, undefined);
+    assert.strictEqual(data.collections[0].description, undefined);
+  });
+
+  test('logs one line when it migrates stored data', () => {
+    const output = new FakeOutput();
+    new BookmarkStore(new FakeMemento({ 'bookmarks.data': v1Stored }), output);
+    assert.strictEqual(output.lines.length, 1);
+    assert.ok(output.lines[0].includes('1'), 'the log line should name the version it migrated from');
+  });
+
+  test('does not write to workspaceState during migration — the next mutation persists v2', async () => {
+    const memento = new FakeMemento({ 'bookmarks.data': v1Stored });
+    const store = new BookmarkStore(memento);
+    assert.strictEqual(memento.updateCallCount, 0, 'loading must not write');
+
+    await store.addItem({ type: 'file', uri: 'file:///b.txt' });
+
+    const persisted = memento.get<{ version: number }>('bookmarks.data')!;
+    assert.strictEqual(persisted.version, 2);
+    assert.strictEqual(memento.updateCallCount, 1);
+  });
+
+  test('falls back to an empty state when stored data is from a newer schema version', () => {
+    const output = new FakeOutput();
+    const store = new BookmarkStore(
+      new FakeMemento({ 'bookmarks.data': { version: 99, items: [], collections: [] } }),
+      output
+    );
+    assert.deepStrictEqual(store.getAll(), { version: 2, items: [], collections: [] });
+    assert.strictEqual(output.lines.length, 1);
   });
 });
