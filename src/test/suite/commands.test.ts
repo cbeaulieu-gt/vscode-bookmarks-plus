@@ -14,9 +14,10 @@ import {
   createRenameCollectionHandler,
   createDeleteCollectionHandler,
   createMoveToCollectionHandler,
+  createSetDescriptionHandler,
   registerViewCommands
 } from '../../commands';
-import { FakeMemento } from './fixtures';
+import { FakeMemento, FakePrompter } from './fixtures';
 
 function makePrompter(overrides: Partial<Prompter> = {}): Prompter {
   return {
@@ -373,5 +374,76 @@ suite('commands - view (toggleGroupByRepo / refresh)', () => {
     } finally {
       subscriptions.forEach((d) => d.dispose());
     }
+  });
+});
+
+suite('commands - setDescription', () => {
+  function itemNode(item: BookmarkItem): BookmarkNode {
+    return { kind: 'item', item };
+  }
+
+  test('sets a description on an item', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const prompter = new FakePrompter({ inputBoxResult: 'the entrypoint' });
+
+    await createSetDescriptionHandler(store, prompter)(itemNode(store.getAll().items[0]));
+
+    assert.strictEqual(store.getAll().items[0].description, 'the entrypoint');
+  });
+
+  test('pre-fills the input box with the current description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'existing');
+    const prompter = new FakePrompter({ inputBoxResult: 'updated' });
+
+    await createSetDescriptionHandler(store, prompter)(itemNode(store.getAll().items[0]));
+
+    assert.strictEqual(prompter.lastInputBoxOptions?.value, 'existing');
+  });
+
+  test('submitting an empty input box clears the description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'existing');
+    const prompter = new FakePrompter({ inputBoxResult: '' });
+
+    await createSetDescriptionHandler(store, prompter)(itemNode(store.getAll().items[0]));
+
+    assert.strictEqual(store.getAll().items[0].description, undefined);
+  });
+
+  test('dismissing the input box leaves the description unchanged', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'existing');
+    const prompter = new FakePrompter({ inputBoxResult: undefined });
+
+    await createSetDescriptionHandler(store, prompter)(itemNode(store.getAll().items[0]));
+
+    assert.strictEqual(store.getAll().items[0].description, 'existing');
+  });
+
+  test('sets a description on a collection', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addCollection('Work');
+    const prompter = new FakePrompter({ inputBoxResult: 'work-related bookmarks' });
+
+    await createSetDescriptionHandler(store, prompter)({
+      kind: 'collection',
+      collection: store.getAll().collections[0]
+    });
+
+    assert.strictEqual(store.getAll().collections[0].description, 'work-related bookmarks');
+  });
+
+  test('is a no-op on a repoGroup node', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const prompter = new FakePrompter({ inputBoxResult: 'nope' });
+
+    await createSetDescriptionHandler(store, prompter)({ kind: 'repoGroup', label: 'repo-a', repoKey: 'repo:repo-a' });
+
+    assert.strictEqual(prompter.inputBoxCallCount, 0, 'the input box must not even open for a repo group');
   });
 });

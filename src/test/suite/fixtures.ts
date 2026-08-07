@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Prompter } from '../../commands';
 
 export class FakeMemento implements vscode.Memento {
   private store = new Map<string, unknown>();
@@ -37,5 +38,56 @@ export class FakeOutput {
   lines: string[] = [];
   appendLine(value: string): void {
     this.lines.push(value);
+  }
+}
+
+export interface FakePrompterOptions {
+  inputBoxResult?: string | undefined;
+  quickPickResult?: unknown;
+  warningConfirmResult?: boolean;
+  infoResult?: unknown;
+}
+
+/**
+ * A configurable fake of the extension's `Prompter` interface.
+ *
+ * `inputBoxResult` mirrors the real `showInputBox` contract: passing
+ * `undefined` simulates the user dismissing the box, and passing `''`
+ * simulates the user submitting an empty value. `lastInputBoxOptions` and
+ * `inputBoxCallCount` let tests assert what was shown (e.g. the pre-filled
+ * `value`) and whether the box was opened at all.
+ */
+export class FakePrompter implements Prompter {
+  lastInputBoxOptions: vscode.InputBoxOptions | undefined;
+  inputBoxCallCount = 0;
+
+  private readonly inputBoxResult: string | undefined;
+  private readonly quickPickResult: unknown;
+  private readonly warningConfirmResult: boolean;
+  private readonly infoResult: unknown;
+
+  constructor(options: FakePrompterOptions = {}) {
+    this.inputBoxResult = options.inputBoxResult;
+    this.quickPickResult = options.quickPickResult;
+    this.warningConfirmResult = options.warningConfirmResult ?? false;
+    this.infoResult = options.infoResult;
+  }
+
+  showInputBox(options: vscode.InputBoxOptions): Thenable<string | undefined> {
+    this.inputBoxCallCount++;
+    this.lastInputBoxOptions = options;
+    return Promise.resolve(this.inputBoxResult);
+  }
+
+  showQuickPick<T extends vscode.QuickPickItem>(): Thenable<T | undefined> {
+    return Promise.resolve(this.quickPickResult as T | undefined);
+  }
+
+  showWarningConfirm(): Thenable<boolean> {
+    return Promise.resolve(this.warningConfirmResult);
+  }
+
+  showInfo(): Thenable<unknown> {
+    return Promise.resolve(this.infoResult);
   }
 }
