@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/glitchwerks/vscode-bookmarks-plus/main/schemas/bookmarks.schema.json",
   "title": "Bookmarks Plus mirror file",
   "description": "Mirror of the Bookmarks Plus extension's workspace bookmark data. Schema version 2.",
   "type": "object",
@@ -9,7 +10,8 @@
     "version": {
       "type": "integer",
       "description": "Schema version. The extension reads version 1 and 2 and always writes 2.",
-      "minimum": 1
+      "minimum": 1,
+      "maximum": 2
     },
     "items": {
       "type": "array",
