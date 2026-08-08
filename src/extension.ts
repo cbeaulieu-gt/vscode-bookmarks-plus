@@ -1,13 +1,20 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { BookmarkStore } from './bookmarkStore';
+import { BookmarkStore, OutputSink } from './bookmarkStore';
+import {
+  MIRROR_RELATIVE_PATH,
+  WorkspaceMirrorFile,
+  resolveMirrorLocation
+} from './bookmarkMirror';
 import { BookmarksTreeDataProvider } from './bookmarksTreeDataProvider';
 import {
   registerAddCommands,
   registerCollectionCommands,
+  registerDescriptionCommands,
   registerItemCommands,
   registerViewCommands
 } from './commands';
+import { Delayer } from './delayer';
 import { CacheEntry, FsGitCache, ResolveFn } from './fsGitCache';
 import {
   createGitApiFactory,
@@ -15,6 +22,33 @@ import {
   GitApiFactory,
   GitExtensionExports
 } from './gitInfo';
+
+const WATCHER_DEBOUNCE_MS = 150;
+
+let activeStore: BookmarkStore | undefined;
+
+function logMirrorDisabled(output: OutputSink, reason: string): void {
+  output.appendLine(
+    `Bookmarks Plus: the ${MIRROR_RELATIVE_PATH} mirror is disabled — ${reason}.`
+  );
+}
+
+export function handleWorkspaceFoldersChanged(
+  store: BookmarkStore,
+  output: OutputSink,
+  folders: readonly { uri: vscode.Uri }[] | undefined,
+  mirrorResources?: vscode.Disposable
+): boolean {
+  const location = resolveMirrorLocation(folders);
+  if (location.kind === 'enabled') {
+    return false;
+  }
+
+  logMirrorDisabled(output, location.reason);
+  store.detachMirror();
+  mirrorResources?.dispose();
+  return true;
+}
 
 function createCacheResolver(getGitApi: GitApiFactory): ResolveFn {
   return async (uriString: string): Promise<CacheEntry> => {
@@ -35,7 +69,16 @@ function createCacheResolver(getGitApi: GitApiFactory): ResolveFn {
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('Bookmarks Plus');
-  const store = new BookmarkStore(context.workspaceState, output);
+  const location = resolveMirrorLocation(vscode.workspace.workspaceFolders);
+
+  if (location.kind === 'disabled') {
+    logMirrorDisabled(output, location.reason);
+  }
+
+  const store = new BookmarkStore(context.workspaceState, output, {
+    mirror: location.kind === 'enabled' ? new WorkspaceMirrorFile(location) : undefined
+  });
+  activeStore = store;
 
   let provider: BookmarksTreeDataProvider | undefined = undefined;
   const getGitApi = createGitApiFactory(
@@ -50,12 +93,51 @@ export function activate(context: vscode.ExtensionContext): void {
     dragAndDropController: provider,
     showCollapseAll: true
   });
-  context.subscriptions.push(output, treeView);
+  context.subscriptions.push(output, treeView, { dispose: () => store.dispose() });
 
   registerAddCommands(context, store);
   registerItemCommands(context, store);
   registerCollectionCommands(context, store);
+  registerDescriptionCommands(context, store);
   registerViewCommands(context, provider);
+
+  let mirrorResources: vscode.Disposable | undefined;
+  if (location.kind === 'enabled') {
+    // One path, never the workspace at large. The .tmp staging file used for atomic
+    // writes deliberately does not match this pattern.
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(location.folder, MIRROR_RELATIVE_PATH)
+    );
+    // A single logical save fires several raw filesystem events, so coalesce before reloading.
+    const reloadDelayer = new Delayer(WATCHER_DEBOUNCE_MS);
+    const onMirrorEvent = (): void => {
+      reloadDelayer.trigger(() => store.reloadFromMirror());
+    };
+    watcher.onDidChange(onMirrorEvent, undefined, context.subscriptions);
+    watcher.onDidCreate(onMirrorEvent, undefined, context.subscriptions);
+    watcher.onDidDelete(onMirrorEvent, undefined, context.subscriptions);
+    context.subscriptions.push(watcher, reloadDelayer);
+    mirrorResources = vscode.Disposable.from(watcher, reloadDelayer);
+
+    void store.syncWithMirror().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      output.appendLine(`Bookmarks Plus: mirror reconcile failed — ${message}`);
+    });
+  }
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      const disabled = handleWorkspaceFoldersChanged(
+        store,
+        output,
+        vscode.workspace.workspaceFolders,
+        mirrorResources
+      );
+      if (disabled) {
+        mirrorResources = undefined;
+      }
+    })
+  );
 
   void getGitApi().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -63,4 +145,10 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  // Flush rather than drop a pending mirror write. A failed write records the mirror as
+  // dirty so workspaceState wins and the write is retried on the next activation.
+  await activeStore?.flushMirrorWrites();
+  activeStore?.dispose();
+  activeStore = undefined;
+}

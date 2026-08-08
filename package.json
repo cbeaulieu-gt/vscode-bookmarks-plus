@@ -38,6 +38,7 @@
       { "command": "bookmarks.reveal", "title": "Reveal in Explorer", "category": "Bookmarks Plus", "icon": "$(go-to-file)" },
       { "command": "bookmarks.newCollection", "title": "New Collection", "category": "Bookmarks Plus", "icon": "$(new-folder)" },
       { "command": "bookmarks.renameCollection", "title": "Rename Collection", "category": "Bookmarks Plus", "icon": "$(edit)" },
+      { "command": "bookmarks.setDescription", "title": "Set Description", "category": "Bookmarks Plus", "icon": "$(note)" },
       { "command": "bookmarks.deleteCollection", "title": "Delete Collection", "category": "Bookmarks Plus", "icon": "$(trash)" },
       { "command": "bookmarks.moveToCollection", "title": "Move to Collection", "category": "Bookmarks Plus", "icon": "$(folder-opened)" },
       { "command": "bookmarks.toggleGroupByRepo", "title": "Toggle Group by Repo", "category": "Bookmarks Plus", "icon": "$(repo)" },
@@ -58,13 +59,18 @@
         { "command": "bookmarks.reveal", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "inline@2" },
         { "command": "bookmarks.moveToCollection", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "inline@3" },
         { "command": "bookmarks.renameCollection", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "inline@1" },
-        { "command": "bookmarks.deleteCollection", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "inline@2" }
+        { "command": "bookmarks.deleteCollection", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "inline@2" },
+        { "command": "bookmarks.setDescription", "when": "view == bookmarksView && viewItem == bookmarkItem", "group": "bookmarks@1" },
+        { "command": "bookmarks.setDescription", "when": "view == bookmarksView && viewItem == bookmarkCollection", "group": "bookmarks@1" }
       ],
       "commandPalette": [
         { "command": "bookmarks.addFile", "when": "false" },
         { "command": "bookmarks.addFolder", "when": "false" }
       ]
-    }
+    },
+    "jsonValidation": [
+      { "fileMatch": ".vscode/bookmarks.json", "url": "./schemas/bookmarks.schema.json" }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

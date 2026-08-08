@@ -1,5 +1,8 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import { BookmarkStore } from '../../bookmarkStore';
+import { handleWorkspaceFoldersChanged } from '../../extension';
+import { FakeMemento, FakeMirror, FakeOutput } from './fixtures';
 
 suite('Extension activation', () => {
   test('extension is present and activates', async () => {
@@ -24,6 +27,7 @@ suite('Extension activation', () => {
       'bookmarks.renameCollection',
       'bookmarks.deleteCollection',
       'bookmarks.moveToCollection',
+      'bookmarks.setDescription',
       'bookmarks.toggleGroupByRepo',
       'bookmarks.refresh'
     ];
@@ -31,5 +35,35 @@ suite('Extension activation', () => {
     for (const command of expected) {
       assert.ok(commands.includes(command), `expected command "${command}" to be registered`);
     }
+  });
+});
+
+suite('Extension - workspace-folder mirror changes', () => {
+  test('disables mirror writes and logs when the workspace becomes multi-root', async () => {
+    const mirror = new FakeMirror();
+    const output = new FakeOutput();
+    const store = new BookmarkStore(new FakeMemento(), output, { mirror, writeDelayMs: 5 });
+    let disposed = false;
+    const resources = { dispose: () => { disposed = true; } };
+
+    await store.addItem({ type: 'file', uri: 'file:///before.txt' });
+    await store.flushMirrorWrites();
+    const writesBefore = mirror.writeCount;
+
+    handleWorkspaceFoldersChanged(
+      store,
+      output,
+      [
+        { uri: vscode.Uri.file('/workspace/one') },
+        { uri: vscode.Uri.file('/workspace/two') }
+      ],
+      resources
+    );
+    await store.addItem({ type: 'file', uri: 'file:///after.txt' });
+    await store.flushMirrorWrites();
+
+    assert.strictEqual(mirror.writeCount, writesBefore);
+    assert.strictEqual(disposed, true);
+    assert.ok(output.lines.some((line) => line.includes('multi-root workspaces are not supported')));
   });
 });

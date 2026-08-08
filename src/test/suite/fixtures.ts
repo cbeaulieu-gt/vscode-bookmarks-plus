@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { Prompter } from '../../commands';
+import { MirrorPort } from '../../bookmarkMirror';
 
 export class FakeMemento implements vscode.Memento {
   private store = new Map<string, unknown>();
@@ -19,7 +21,11 @@ export class FakeMemento implements vscode.Memento {
   }
 
   update(key: string, value: unknown): Thenable<void> {
-    this.store.set(key, value);
+    if (value === undefined) {
+      this.store.delete(key);
+    } else {
+      this.store.set(key, value);
+    }
     this.updateCallCount++;
     return Promise.resolve();
   }
@@ -37,5 +43,90 @@ export class FakeOutput {
   lines: string[] = [];
   appendLine(value: string): void {
     this.lines.push(value);
+  }
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export class FakeMirror implements MirrorPort {
+  content: string | undefined;
+  writeCount = 0;
+  readCount = 0;
+  failNextWrite = false;
+  failNextRead = false;
+
+  constructor(initialContent?: string) {
+    this.content = initialContent;
+  }
+
+  async read(): Promise<string | undefined> {
+    this.readCount++;
+    if (this.failNextRead) {
+      this.failNextRead = false;
+      throw new Error('simulated read failure');
+    }
+    return this.content;
+  }
+
+  async write(content: string): Promise<void> {
+    if (this.failNextWrite) {
+      this.failNextWrite = false;
+      throw new Error('simulated write failure');
+    }
+    this.content = content;
+    this.writeCount++;
+  }
+}
+
+export interface FakePrompterOptions {
+  inputBoxResult?: string | undefined;
+  quickPickResult?: unknown;
+  warningConfirmResult?: boolean;
+  infoResult?: unknown;
+}
+
+/**
+ * A configurable fake of the extension's `Prompter` interface.
+ *
+ * `inputBoxResult` mirrors the real `showInputBox` contract: passing
+ * `undefined` simulates the user dismissing the box, and passing `''`
+ * simulates the user submitting an empty value. `lastInputBoxOptions` and
+ * `inputBoxCallCount` let tests assert what was shown (e.g. the pre-filled
+ * `value`) and whether the box was opened at all.
+ */
+export class FakePrompter implements Prompter {
+  lastInputBoxOptions: vscode.InputBoxOptions | undefined;
+  inputBoxCallCount = 0;
+
+  private readonly inputBoxResult: string | undefined;
+  private readonly quickPickResult: unknown;
+  private readonly warningConfirmResult: boolean;
+  private readonly infoResult: unknown;
+
+  constructor(options: FakePrompterOptions = {}) {
+    this.inputBoxResult = options.inputBoxResult;
+    this.quickPickResult = options.quickPickResult;
+    this.warningConfirmResult = options.warningConfirmResult ?? false;
+    this.infoResult = options.infoResult;
+  }
+
+  showInputBox(options: vscode.InputBoxOptions): Thenable<string | undefined> {
+    this.inputBoxCallCount++;
+    this.lastInputBoxOptions = options;
+    return Promise.resolve(this.inputBoxResult);
+  }
+
+  showQuickPick<T extends vscode.QuickPickItem>(): Thenable<T | undefined> {
+    return Promise.resolve(this.quickPickResult as T | undefined);
+  }
+
+  showWarningConfirm(): Thenable<boolean> {
+    return Promise.resolve(this.warningConfirmResult);
+  }
+
+  showInfo(): Thenable<unknown> {
+    return Promise.resolve(this.infoResult);
   }
 }

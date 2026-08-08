@@ -267,3 +267,67 @@ suite('BookmarksTreeDataProvider - drag and drop', () => {
     assert.strictEqual(dt.get(DND_MIME_TYPE), undefined);
   });
 });
+
+suite('BookmarksTreeDataProvider - descriptions', () => {
+  test('an item with a description gets a tooltip containing both the path and the description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'the entrypoint');
+    const provider = new BookmarksTreeDataProvider(store, new FsGitCache(async () => ({ exists: true })));
+
+    const treeItem = await provider.getTreeItem({ kind: 'item', item: store.getAll().items[0] });
+
+    assert.strictEqual(typeof treeItem.tooltip, 'string');
+    assert.ok((treeItem.tooltip as string).includes('the entrypoint'));
+    assert.ok((treeItem.tooltip as string).includes('a.txt'));
+  });
+
+  test('an item without a description leaves the tooltip undefined (default path hover survives)', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    const provider = new BookmarksTreeDataProvider(store, new FsGitCache(async () => ({ exists: true })));
+
+    const treeItem = await provider.getTreeItem({ kind: 'item', item: store.getAll().items[0] });
+
+    assert.strictEqual(treeItem.tooltip, undefined);
+  });
+
+  test('a description never displaces the repo-name badge in TreeItem.description', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///a.txt' });
+    await store.setItemDescription(item.id, 'the entrypoint');
+    const provider = new BookmarksTreeDataProvider(
+      store,
+      new FsGitCache(async () => ({ exists: true, repoName: 'repo-a' }))
+    );
+
+    const treeItem = await provider.getTreeItem({ kind: 'item', item: store.getAll().items[0] });
+
+    assert.strictEqual(treeItem.description, 'repo-a');
+  });
+
+  test('a description never displaces the "missing" badge on a broken bookmark', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const item = await store.addItem({ type: 'file', uri: 'file:///gone.txt' });
+    await store.setItemDescription(item.id, 'was here');
+    const provider = new BookmarksTreeDataProvider(store, new FsGitCache(async () => ({ exists: false })));
+
+    const treeItem = await provider.getTreeItem({ kind: 'item', item: store.getAll().items[0] });
+
+    assert.strictEqual(treeItem.description, 'missing');
+    assert.ok((treeItem.tooltip as string).includes('was here'));
+  });
+
+  test('a collection with a description gets it as the tooltip; without one the tooltip is undefined', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const collection = await store.addCollection('Work');
+    const provider = new BookmarksTreeDataProvider(store, new FsGitCache(async () => ({ exists: true })));
+
+    const before = await provider.getTreeItem({ kind: 'collection', collection: store.getAll().collections[0] });
+    assert.strictEqual(before.tooltip, undefined);
+
+    await store.setCollectionDescription(collection.id, 'work-related bookmarks');
+    const after = await provider.getTreeItem({ kind: 'collection', collection: store.getAll().collections[0] });
+    assert.strictEqual(after.tooltip, 'work-related bookmarks');
+  });
+});

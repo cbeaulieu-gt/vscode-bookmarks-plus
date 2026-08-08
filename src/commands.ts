@@ -15,6 +15,22 @@ export interface Prompter {
   showInfo(message: string): Thenable<unknown>;
 }
 
+export function createPrompter(): Prompter {
+  return {
+    showInputBox: (options) => vscode.window.showInputBox(options),
+    showQuickPick: (items, options) => vscode.window.showQuickPick(items, options),
+    showWarningConfirm: async (message, confirmLabel) => {
+      const result = await vscode.window.showWarningMessage(
+        message,
+        { modal: true },
+        confirmLabel
+      );
+      return result === confirmLabel;
+    },
+    showInfo: (message) => vscode.window.showInformationMessage(message)
+  };
+}
+
 async function addBookmark(
   store: BookmarkStore,
   prompter: Pick<Prompter, 'showInfo'>,
@@ -100,6 +116,32 @@ export function createRenameCollectionHandler(
       return;
     }
     await store.renameCollection(node.collection.id, name);
+  };
+}
+
+export function createSetDescriptionHandler(
+  store: BookmarkStore,
+  prompter: Pick<Prompter, 'showInputBox'>
+): (node?: BookmarkNode) => Promise<void> {
+  return async (node?: BookmarkNode): Promise<void> => {
+    if (node === undefined || node.kind === 'repoGroup') {
+      return;
+    }
+    const current = node.kind === 'item'
+      ? node.item.description
+      : node.collection.description;
+    const next = await prompter.showInputBox({
+      prompt: 'Description (submit an empty value to clear it)',
+      value: current ?? ''
+    });
+    if (next === undefined) {
+      return;
+    }
+    if (node.kind === 'item') {
+      await store.setItemDescription(node.item.id, next);
+      return;
+    }
+    await store.setCollectionDescription(node.collection.id, next);
   };
 }
 
@@ -197,19 +239,7 @@ export function registerCollectionCommands(
   context: vscode.ExtensionContext,
   store: BookmarkStore
 ): void {
-  const prompter: Prompter = {
-    showInputBox: (options) => vscode.window.showInputBox(options),
-    showQuickPick: (items, options) => vscode.window.showQuickPick(items, options),
-    showWarningConfirm: async (message, confirmLabel) => {
-      const result = await vscode.window.showWarningMessage(
-        message,
-        { modal: true },
-        confirmLabel
-      );
-      return result === confirmLabel;
-    },
-    showInfo: (message) => vscode.window.showInformationMessage(message)
-  };
+  const prompter = createPrompter();
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'bookmarks.newCollection',
@@ -226,6 +256,18 @@ export function registerCollectionCommands(
     vscode.commands.registerCommand(
       'bookmarks.moveToCollection',
       createMoveToCollectionHandler(store, prompter)
+    )
+  );
+}
+
+export function registerDescriptionCommands(
+  context: vscode.ExtensionContext,
+  store: BookmarkStore
+): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'bookmarks.setDescription',
+      createSetDescriptionHandler(store, createPrompter())
     )
   );
 }

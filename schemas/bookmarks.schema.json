@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/glitchwerks/vscode-bookmarks-plus/main/schemas/bookmarks.schema.json",
+  "title": "Bookmarks Plus mirror file",
+  "description": "Mirror of the Bookmarks Plus extension's workspace bookmark data. Schema version 2.",
+  "type": "object",
+  "required": ["version", "items", "collections"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version. The extension reads version 1 and 2 and always writes 2.",
+      "minimum": 1,
+      "maximum": 2
+    },
+    "items": {
+      "type": "array",
+      "description": "Bookmarked files and folders.",
+      "items": { "$ref": "#/definitions/bookmarkItem" }
+    },
+    "collections": {
+      "type": "array",
+      "description": "Named groups of bookmarks.",
+      "items": { "$ref": "#/definitions/bookmarkCollection" }
+    }
+  },
+  "definitions": {
+    "bookmarkItem": {
+      "type": "object",
+      "required": ["id", "type", "uri", "collectionId", "order"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable unique id (a uuid when created by the extension)." },
+        "type": { "enum": ["file", "folder"] },
+        "uri": { "type": "string", "minLength": 1, "description": "Absolute URI (vscode.Uri.toString()). Never workspace-relative." },
+        "collectionId": {
+          "type": ["string", "null"],
+          "description": "Id of the containing collection, or null for an ungrouped bookmark."
+        },
+        "order": { "type": "integer", "minimum": 0, "description": "Zero-based position within its parent." },
+        "description": { "type": "string", "description": "Optional free-text note." }
+      }
+    },
+    "bookmarkCollection": {
+      "type": "object",
+      "required": ["id", "name", "order"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "description": { "type": "string", "description": "Optional free-text note." }
+      }
+    }
+  }
+}
