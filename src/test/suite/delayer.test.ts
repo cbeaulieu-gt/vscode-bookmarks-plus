@@ -50,6 +50,21 @@ suite('Delayer', () => {
     delayer.dispose();
   });
 
+  test('flush awaits a task that is already running after its timer fired', async () => {
+    let done = false;
+    const delayer = new Delayer(5);
+
+    delayer.trigger(async () => {
+      await sleep(30);
+      done = true;
+    });
+    await sleep(15);
+    await delayer.flush();
+
+    assert.strictEqual(done, true, 'flush must await the in-flight task');
+    delayer.dispose();
+  });
+
   test('flush with nothing pending resolves without error', async () => {
     const delayer = new Delayer(10);
     await delayer.flush();

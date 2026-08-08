@@ -17,6 +17,7 @@ import { normalizeBookmarkData } from './normalize';
 
 const STORAGE_KEY = 'bookmarks.data';
 const MIRROR_HASH_KEY = 'bookmarks.mirrorHash';
+const MIRROR_DIRTY_KEY = 'bookmarks.mirrorDirty';
 const DEFAULT_MIRROR_WRITE_DELAY_MS = 250;
 
 export interface OutputSink {
@@ -52,7 +53,7 @@ export class BookmarkStore {
   private data: BookmarkData;
   private readonly _onBookmarksChanged = new vscode.EventEmitter<void>();
   readonly onBookmarksChanged: vscode.Event<void> = this._onBookmarksChanged.event;
-  private readonly mirror?: MirrorPort;
+  private mirror?: MirrorPort;
   private readonly mirrorDelayer: Delayer;
 
   constructor(
@@ -275,14 +276,22 @@ export class BookmarkStore {
     this.mirrorDelayer.dispose();
   }
 
+  detachMirror(): void {
+    this.mirror = undefined;
+  }
+
   /**
    * Activation-time reconcile between workspaceState and the mirror file.
    *
-   * workspaceState wins unless the file's hash differs from the hash of the content this
-   * extension last wrote successfully — that difference is the only proof of an external edit.
+   * A dirty flag makes workspaceState win after a failed write. Otherwise, workspaceState wins
+   * unless the file's hash differs from the last successful write, proving an external edit.
    */
   async syncWithMirror(): Promise<void> {
     if (!this.mirror) {
+      return;
+    }
+    if (this.state.get<boolean>(MIRROR_DIRTY_KEY) === true) {
+      await this.writeMirrorNow();
       return;
     }
     let content: string | undefined;
@@ -305,6 +314,10 @@ export class BookmarkStore {
   /** Watcher-driven reload. Ignores events whose content is this process's own last write. */
   async reloadFromMirror(): Promise<void> {
     if (!this.mirror) {
+      return;
+    }
+    if (this.state.get<boolean>(MIRROR_DIRTY_KEY) === true) {
+      await this.writeMirrorNow();
       return;
     }
     let content: string | undefined;
@@ -342,13 +355,14 @@ export class BookmarkStore {
       await this.mirror.write(content);
     } catch (error: unknown) {
       this.logMirrorFailure('write', error);
-      // Clearing the hash marks the mirror as out of sync, so the next activation
-      // reconcile lets workspaceState win instead of adopting a stale file.
-      await this.state.update(MIRROR_HASH_KEY, undefined);
+      // Persist the fact that workspaceState is newer so a fresh activation retries
+      // this write instead of adopting the stale mirror file.
+      await this.state.update(MIRROR_DIRTY_KEY, true);
       return;
     }
     // Recorded only after a confirmed successful write — never at schedule time.
     await this.state.update(MIRROR_HASH_KEY, hashContent(content));
+    await this.state.update(MIRROR_DIRTY_KEY, undefined);
   }
 
   private async adoptMirrorContent(content: string): Promise<void> {

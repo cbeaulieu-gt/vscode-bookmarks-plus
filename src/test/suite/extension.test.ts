@@ -1,5 +1,8 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import { BookmarkStore } from '../../bookmarkStore';
+import { handleWorkspaceFoldersChanged } from '../../extension';
+import { FakeMemento, FakeMirror, FakeOutput } from './fixtures';
 
 suite('Extension activation', () => {
   test('extension is present and activates', async () => {
@@ -24,6 +27,7 @@ suite('Extension activation', () => {
       'bookmarks.renameCollection',
       'bookmarks.deleteCollection',
       'bookmarks.moveToCollection',
+      'bookmarks.setDescription',
       'bookmarks.toggleGroupByRepo',
       'bookmarks.refresh'
     ];
@@ -34,16 +38,32 @@ suite('Extension activation', () => {
   });
 });
 
-suite('Extension - mirror wiring', () => {
-  test('activation succeeds and does not throw regardless of the workspace shape', async () => {
-    const ext = vscode.extensions.getExtension('cbeaulieu-gt.vscode-bookmarks-plus');
-    assert.ok(ext);
-    await ext!.activate();
-    assert.strictEqual(ext!.isActive, true);
-  });
+suite('Extension - workspace-folder mirror changes', () => {
+  test('disables mirror writes and logs when the workspace becomes multi-root', async () => {
+    const mirror = new FakeMirror();
+    const output = new FakeOutput();
+    const store = new BookmarkStore(new FakeMemento(), output, { mirror, writeDelayMs: 5 });
+    let disposed = false;
+    const resources = { dispose: () => { disposed = true; } };
 
-  test('the setDescription command is registered', async () => {
-    const commands = await vscode.commands.getCommands(true);
-    assert.ok(commands.includes('bookmarks.setDescription'));
+    await store.addItem({ type: 'file', uri: 'file:///before.txt' });
+    await store.flushMirrorWrites();
+    const writesBefore = mirror.writeCount;
+
+    handleWorkspaceFoldersChanged(
+      store,
+      output,
+      [
+        { uri: vscode.Uri.file('/workspace/one') },
+        { uri: vscode.Uri.file('/workspace/two') }
+      ],
+      resources
+    );
+    await store.addItem({ type: 'file', uri: 'file:///after.txt' });
+    await store.flushMirrorWrites();
+
+    assert.strictEqual(mirror.writeCount, writesBefore);
+    assert.strictEqual(disposed, true);
+    assert.ok(output.lines.some((line) => line.includes('multi-root workspaces are not supported')));
   });
 });

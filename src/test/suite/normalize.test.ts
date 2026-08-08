@@ -30,6 +30,27 @@ suite('normalizeBookmarkData', () => {
     assert.strictEqual(JSON.stringify(input), snapshot);
   });
 
+  test('reassigns later duplicate item and collection ids', () => {
+    const result = normalizeBookmarkData(
+      data({
+        items: [
+          { id: 'duplicate-item', type: 'file', uri: 'file:///a.txt', collectionId: null, order: 0 },
+          { id: 'duplicate-item', type: 'file', uri: 'file:///b.txt', collectionId: null, order: 1 }
+        ],
+        collections: [
+          { id: 'duplicate-collection', name: 'First', order: 0 },
+          { id: 'duplicate-collection', name: 'Second', order: 1 }
+        ]
+      })
+    );
+
+    assert.strictEqual(result.data.items.length, 2);
+    assert.strictEqual(new Set(result.data.items.map((item) => item.id)).size, 2);
+    assert.strictEqual(new Set(result.data.collections.map((collection) => collection.id)).size, 2);
+    assert.strictEqual(result.changed, true);
+    assert.ok(result.notes.some((note) => note.includes('duplicate id')));
+  });
+
   test('ungroups an item whose collectionId does not exist', () => {
     const result = normalizeBookmarkData(
       data({ items: [{ id: 'i1', type: 'file', uri: 'file:///a.txt', collectionId: 'ghost', order: 0 }] })

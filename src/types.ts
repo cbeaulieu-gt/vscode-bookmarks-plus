@@ -65,6 +65,7 @@ export function isValidBookmarkCollection(value: unknown): value is BookmarkColl
     typeof v.id === 'string' &&
     v.id.length > 0 &&
     typeof v.name === 'string' &&
+    v.name.length > 0 &&
     typeof v.order === 'number' &&
     Number.isFinite(v.order) &&
     (v.description === undefined || typeof v.description === 'string')

@@ -382,6 +382,15 @@ suite('commands - setDescription', () => {
     return { kind: 'item', item };
   }
 
+  test('is a no-op when invoked without a tree node', async () => {
+    const store = new BookmarkStore(new FakeMemento());
+    const prompter = new FakePrompter({ inputBoxResult: 'unused' });
+
+    await createSetDescriptionHandler(store, prompter)();
+
+    assert.strictEqual(prompter.inputBoxCallCount, 0);
+  });
+
   test('sets a description on an item', async () => {
     const store = new BookmarkStore(new FakeMemento());
     await store.addItem({ type: 'file', uri: 'file:///a.txt' });

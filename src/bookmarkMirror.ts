@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as vscode from 'vscode';
 import { BookmarkData } from './types';
 
@@ -6,7 +6,6 @@ export const MIRROR_RELATIVE_PATH = '.vscode/bookmarks.json';
 
 const MIRROR_DIRECTORY = '.vscode';
 const MIRROR_FILENAME = 'bookmarks.json';
-const MIRROR_TEMP_FILENAME = 'bookmarks.json.tmp';
 
 export type MirrorLocation =
   | { kind: 'enabled'; folder: vscode.Uri; directory: vscode.Uri; file: vscode.Uri }
@@ -54,14 +53,10 @@ function isFileNotFound(error: unknown): boolean {
 }
 
 export class WorkspaceMirrorFile implements MirrorPort {
-  private readonly tempFile: vscode.Uri;
-
   constructor(
     private readonly location: { directory: vscode.Uri; file: vscode.Uri },
     private readonly fs: vscode.FileSystem = vscode.workspace.fs
-  ) {
-    this.tempFile = vscode.Uri.joinPath(location.directory, MIRROR_TEMP_FILENAME);
-  }
+  ) {}
 
   async read(): Promise<string | undefined> {
     try {
@@ -76,8 +71,21 @@ export class WorkspaceMirrorFile implements MirrorPort {
   }
 
   async write(content: string): Promise<void> {
+    const tempFile = vscode.Uri.joinPath(
+      this.location.directory,
+      `${MIRROR_FILENAME}.${randomUUID()}.tmp`
+    );
     await this.fs.createDirectory(this.location.directory);
-    await this.fs.writeFile(this.tempFile, new TextEncoder().encode(content));
-    await this.fs.rename(this.tempFile, this.location.file, { overwrite: true });
+    await this.fs.writeFile(tempFile, new TextEncoder().encode(content));
+    try {
+      await this.fs.rename(tempFile, this.location.file, { overwrite: true });
+    } catch (error: unknown) {
+      try {
+        await this.fs.delete(tempFile, { recursive: false, useTrash: false });
+      } catch {
+        // Best-effort cleanup must not replace the original rename error.
+      }
+      throw error;
+    }
   }
 }

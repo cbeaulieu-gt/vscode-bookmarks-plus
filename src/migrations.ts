@@ -30,6 +30,9 @@ const migrations: Record<number, (data: MigrationInput) => MigrationInput> = {
  * which must never be silently rewritten) or when the ladder has no rung for its version.
  */
 export function migrateBookmarkData(input: BookmarkData): BookmarkData {
+  if (!Number.isInteger(input.version)) {
+    throw new UnsupportedSchemaVersionError(input.version);
+  }
   if (input.version > CURRENT_SCHEMA_VERSION) {
     throw new UnsupportedSchemaVersionError(input.version);
   }

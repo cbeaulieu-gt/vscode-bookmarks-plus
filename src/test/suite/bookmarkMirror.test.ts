@@ -120,4 +120,35 @@ suite('bookmarkMirror - WorkspaceMirrorFile (real filesystem)', () => {
 
     await assert.rejects(() => mirror.write('{}\n'));
   });
+
+  test('removes its unique temp file when rename fails', async () => {
+    const realFs = vscode.workspace.fs;
+    const failingFs = Object.create(realFs) as vscode.FileSystem;
+    Object.defineProperty(failingFs, 'rename', {
+      value: async () => {
+        throw vscode.FileSystemError.Unavailable('simulated rename failure');
+      }
+    });
+    const location = resolveMirrorLocation([{ uri: root }]);
+    assert.ok(location.kind === 'enabled');
+    const mirror = new WorkspaceMirrorFile(location, failingFs);
+
+    await assert.rejects(() => mirror.write('{}\n'));
+
+    const entries = await realFs.readDirectory(vscode.Uri.joinPath(root, '.vscode'));
+    assert.strictEqual(
+      entries.some(([name]) => name.startsWith('bookmarks.json.') && name.endsWith('.tmp')),
+      false
+    );
+  });
+
+  test('concurrent instances write without colliding on a temp file', async () => {
+    const first = mirrorFor(root);
+    const second = mirrorFor(root);
+    const contents = ['{"writer": "first"}\n', '{"writer": "second"}\n'];
+
+    await Promise.all([first.write(contents[0]), second.write(contents[1])]);
+
+    assert.ok(contents.includes((await first.read())!));
+  });
 });

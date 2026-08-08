@@ -587,7 +587,7 @@ suite('BookmarkStore - mirror writes', () => {
     assert.strictEqual(memento.get('bookmarks.mirrorHash'), hashContent(mirror.content!));
   });
 
-  test('a failed mirror write clears the recorded hash and logs one line', async () => {
+  test('a failed mirror write records the dirty state and logs one line', async () => {
     const mirror = new FakeMirror();
     const memento = new FakeMemento();
     const output = new FakeOutput();
@@ -602,11 +602,7 @@ suite('BookmarkStore - mirror writes', () => {
     await store.addItem({ type: 'file', uri: 'file:///b.txt' });
     await store.flushMirrorWrites();
 
-    assert.strictEqual(
-      memento.get('bookmarks.mirrorHash'),
-      undefined,
-      'a failed write must clear the hash so workspaceState wins the next reconcile'
-    );
+    assert.strictEqual(memento.get('bookmarks.mirrorDirty'), true);
     assert.strictEqual(
       output.lines.length,
       linesBeforeFailure + 1,
@@ -786,6 +782,27 @@ suite('BookmarkStore - syncWithMirror (activation reconcile)', () => {
     assert.strictEqual(mirror.writeCount, 0);
   });
 
+  test('retries a dirty mirror from workspaceState without adopting stale content', async () => {
+    const staleContent = fileContent([
+      { id: 'stale', type: 'file', uri: 'file:///stale.txt', collectionId: null, order: 0 }
+    ]);
+    const mirror = new FakeMirror(staleContent);
+    const memento = new FakeMemento({
+      'bookmarks.data': { version: 2, items: [], collections: [] },
+      'bookmarks.mirrorHash': hashContent(staleContent)
+    });
+    const store = new BookmarkStore(memento, new FakeOutput(), { mirror, writeDelayMs: 5 });
+
+    mirror.failNextWrite = true;
+    const added = await store.addItem({ type: 'file', uri: 'file:///new.txt' });
+    await store.flushMirrorWrites();
+    await store.syncWithMirror();
+
+    assert.deepStrictEqual(store.getAll().items.map((item) => item.id), [added.id]);
+    assert.deepStrictEqual(JSON.parse(mirror.content!).items.map((item: { id: string }) => item.id), [added.id]);
+    assert.strictEqual(memento.get('bookmarks.mirrorDirty'), undefined);
+  });
+
   test('is a no-op when no mirror is attached', async () => {
     const memento = new FakeMemento();
     const store = new BookmarkStore(memento);
@@ -801,7 +818,8 @@ suite('BookmarkStore - reloadFromMirror (external change)', () => {
 
   test('ignores an event whose file content is our own last write', async () => {
     const mirror = new FakeMirror();
-    const store = new BookmarkStore(new FakeMemento(), new FakeOutput(), { mirror, writeDelayMs: 5 });
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento, new FakeOutput(), { mirror, writeDelayMs: 5 });
     await store.addItem({ type: 'file', uri: 'file:///a.txt' });
     await store.flushMirrorWrites();
 
@@ -815,7 +833,8 @@ suite('BookmarkStore - reloadFromMirror (external change)', () => {
 
   test('adopts an external edit and fires the change event once', async () => {
     const mirror = new FakeMirror();
-    const store = new BookmarkStore(new FakeMemento(), new FakeOutput(), { mirror, writeDelayMs: 5 });
+    const memento = new FakeMemento();
+    const store = new BookmarkStore(memento, new FakeOutput(), { mirror, writeDelayMs: 5 });
     await store.addItem({ type: 'file', uri: 'file:///a.txt' });
     await store.flushMirrorWrites();
 
@@ -830,6 +849,10 @@ suite('BookmarkStore - reloadFromMirror (external change)', () => {
     assert.deepStrictEqual(store.getAll().items.map((i) => i.id), ['external']);
     assert.strictEqual(store.getAll().items[0].description, 'added by MCP');
     assert.strictEqual(fireCount, 1);
+    assert.strictEqual(memento.get('bookmarks.mirrorHash'), hashContent(mirror.content!));
+
+    await store.reloadFromMirror();
+    assert.strictEqual(fireCount, 1, 'the recorded hash must suppress an unchanged watcher echo');
   });
 
   test('keeps current data when the file is deleted, and logs', async () => {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   BookmarkCollection,
   BookmarkData,
@@ -37,10 +38,44 @@ export function normalizeBookmarkData(input: BookmarkData): NormalizeResult {
   const notes: string[] = [];
   let changed = false;
 
-  const knownCollectionIds = new Set(input.collections.map((c) => c.id));
+  const uniqueId = (seenIds: Set<string>): string => {
+    let id: string;
+    do {
+      id = randomUUID();
+    } while (seenIds.has(id));
+    return id;
+  };
+
+  const seenItemIds = new Set<string>();
+  const itemsWithUniqueIds = input.items.map((item) => {
+    if (!seenItemIds.has(item.id)) {
+      seenItemIds.add(item.id);
+      return item;
+    }
+    const id = uniqueId(seenItemIds);
+    seenItemIds.add(id);
+    changed = true;
+    notes.push(`duplicate id "${item.id}" was reassigned a new id.`);
+    return { ...item, id };
+  });
+
+  const seenCollectionIds = new Set<string>();
+  const collectionsWithUniqueIds = input.collections.map((collection) => {
+    if (!seenCollectionIds.has(collection.id)) {
+      seenCollectionIds.add(collection.id);
+      return collection;
+    }
+    const id = uniqueId(seenCollectionIds);
+    seenCollectionIds.add(id);
+    changed = true;
+    notes.push(`duplicate id "${collection.id}" was reassigned a new id.`);
+    return { ...collection, id };
+  });
+
+  const knownCollectionIds = new Set(collectionsWithUniqueIds.map((c) => c.id));
 
   // 1. Descriptions + dangling collection references.
-  let items: BookmarkItem[] = input.items.map((item) => {
+  let items: BookmarkItem[] = itemsWithUniqueIds.map((item) => {
     const normalized = withDescription(item);
     let next = normalized.entry;
     if (normalized.changed) {
@@ -91,7 +126,7 @@ export function normalizeBookmarkData(input: BookmarkData): NormalizeResult {
   items = items.map((item) => ({ ...item, order: renumbered.get(item.id)! }));
 
   // 4. Collections: descriptions + contiguous ordering.
-  const sortedCollections = [...input.collections].sort((a, b) => a.order - b.order);
+  const sortedCollections = [...collectionsWithUniqueIds].sort((a, b) => a.order - b.order);
   const collections: BookmarkCollection[] = sortedCollections.map((collection, index) => {
     const normalized = withDescription(collection);
     if (normalized.changed) {

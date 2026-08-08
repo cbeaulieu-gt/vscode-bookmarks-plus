@@ -10,6 +10,7 @@ export type DelayedTask = () => void | Promise<void>;
 export class Delayer {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pending: DelayedTask | undefined;
+  private runningTask: Promise<void> | undefined;
 
   constructor(private readonly delayMs: number) {}
 
@@ -25,7 +26,7 @@ export class Delayer {
       this.pending = undefined;
 
       if (pendingTask !== undefined) {
-        void this.run(pendingTask);
+        void this.start(pendingTask);
       }
     }, this.delayMs);
   }
@@ -40,7 +41,9 @@ export class Delayer {
     this.pending = undefined;
 
     if (pendingTask !== undefined) {
-      await this.run(pendingTask);
+      await this.start(pendingTask);
+    } else if (this.runningTask !== undefined) {
+      await this.runningTask;
     }
   }
 
@@ -59,5 +62,16 @@ export class Delayer {
     } catch {
       // A failed task must not prevent later tasks from running.
     }
+  }
+
+  private start(pendingTask: DelayedTask): Promise<void> {
+    const runningTask = this.run(pendingTask);
+    this.runningTask = runningTask;
+    void runningTask.finally(() => {
+      if (this.runningTask === runningTask) {
+        this.runningTask = undefined;
+      }
+    });
+    return runningTask;
   }
 }

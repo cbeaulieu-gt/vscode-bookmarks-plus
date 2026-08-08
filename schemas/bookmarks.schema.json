@@ -45,7 +45,7 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
         "order": { "type": "integer", "minimum": 0 },
         "description": { "type": "string", "description": "Optional free-text note." }
       }

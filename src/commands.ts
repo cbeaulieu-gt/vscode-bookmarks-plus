@@ -122,9 +122,9 @@ export function createRenameCollectionHandler(
 export function createSetDescriptionHandler(
   store: BookmarkStore,
   prompter: Pick<Prompter, 'showInputBox'>
-): (node: BookmarkNode) => Promise<void> {
-  return async (node: BookmarkNode): Promise<void> => {
-    if (node.kind === 'repoGroup') {
+): (node?: BookmarkNode) => Promise<void> {
+  return async (node?: BookmarkNode): Promise<void> => {
+    if (node === undefined || node.kind === 'repoGroup') {
       return;
     }
     const current = node.kind === 'item'

@@ -1,7 +1,12 @@
 import * as assert from 'assert';
 import { migrateBookmarkData, UnsupportedSchemaVersionError } from '../../migrations';
 import { BookmarkData, CURRENT_SCHEMA_VERSION } from '../../types';
-import { isStrictBookmarkData, isValidBookmarkItem, normalizeDescription } from '../../types';
+import {
+  isStrictBookmarkData,
+  isValidBookmarkCollection,
+  isValidBookmarkItem,
+  normalizeDescription
+} from '../../types';
 
 const v1Fixture = {
   version: 1,
@@ -60,6 +65,11 @@ suite('migrations.migrateBookmarkData', () => {
     const ancient = { version: 0, items: [], collections: [] } as BookmarkData;
     assert.throws(() => migrateBookmarkData(ancient), UnsupportedSchemaVersionError);
   });
+
+  test('refuses a non-integer NaN schema version', () => {
+    const invalid = { version: Number.NaN, items: [], collections: [] } as BookmarkData;
+    assert.throws(() => migrateBookmarkData(invalid), UnsupportedSchemaVersionError);
+  });
 });
 
 suite('types - strict validation', () => {
@@ -88,8 +98,21 @@ suite('types - strict validation', () => {
     assert.strictEqual(isValidBookmarkItem({ ...validItem, order: '0' }), false);
   });
 
+  test('rejects a collection with an empty name', () => {
+    assert.strictEqual(isValidBookmarkCollection({ id: 'c1', name: '', order: 0 }), false);
+  });
+
   test('isStrictBookmarkData rejects a payload whose items array holds one bad entry', () => {
     const data = { version: 2, items: [validItem, { nope: true }], collections: [] };
+    assert.strictEqual(isStrictBookmarkData(data), false);
+  });
+
+  test('isStrictBookmarkData rejects a payload whose collection is missing its name', () => {
+    const data = {
+      version: 2,
+      items: [validItem],
+      collections: [{ id: 'c1', order: 0 }]
+    };
     assert.strictEqual(isStrictBookmarkData(data), false);
   });
 
