@@ -10,8 +10,42 @@ See `docs/superpowers/specs/` for the design spec.
 - Organize bookmarks into collections; drag and drop to reorder or move between collections.
 - Group the view by git repository, with a dedicated "Unknown" group for anything unresolved.
 - Broken bookmarks (moved/deleted targets) show a warning icon instead of erroring.
+- Add an optional description to any bookmark or collection — shown on hover.
+- Bookmarks are mirrored to `.vscode/bookmarks.json` so external tools can read and edit them.
 
 ![Bookmarks Plus screenshot](images/screenshot.png)
+
+## Descriptions
+
+Right-click a bookmark or a collection and choose **Set Description** to attach a free-text
+note. The note appears in the hover tooltip. To remove a note, open **Set Description** again,
+clear the input box, and submit an empty value.
+
+## The `.vscode/bookmarks.json` mirror
+
+Bookmarks live in VS Code's per-workspace storage. The extension also mirrors them to
+`.vscode/bookmarks.json` in your workspace so that other tools — scripts, editors, or an MCP
+server — can read and change them.
+
+- **Location:** `.vscode/bookmarks.json`, relative to the workspace folder.
+- **When it is written:** shortly after any bookmark change (writes are batched, so a burst of
+  drag-and-drop reordering produces one write).
+- **External edits are picked up live.** Edit the file in any editor and the Bookmarks view
+  updates. Edits made while VS Code is closed are picked up the next time the window opens.
+- **Its shape is a semi-public contract.** The file is schema version 2, described by the JSON
+  schema shipped with the extension — you get completion and validation when editing it in
+  VS Code. Fields may be added in a future schema version; existing fields will not change
+  meaning without a version bump.
+- **Last write wins.** There is no locking or merging. If the extension and an external tool
+  write at the same moment, the later write survives. Malformed or unreadable content is never
+  adopted — the extension keeps the bookmarks it already had, logs a line to the
+  "Bookmarks Plus" output channel, and leaves your file untouched until your next bookmark change.
+- **Single-folder workspaces only.** In a multi-root workspace there is no unambiguous place to
+  put the file (the folder order is user-changeable), so the mirror is disabled and a line is
+  logged to the output channel. Bookmarks and descriptions work normally.
+- **Source control is your choice.** The extension neither commits nor ignores the file. Commit
+  it to share a bookmark set with your team, or add `.vscode/bookmarks.json` to `.gitignore` to
+  keep it private — bookmarks were private-per-user before this file existed.
 
 ## Requirements
 

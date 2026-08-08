@@ -57,6 +57,12 @@ There is no TTL — cache-until-invalidated is sufficient for v1, since nothing 
 
 Data flow is one-way: a command handler (or `TreeDragAndDropController.handleDrop()`) calls a `BookmarkStore` mutation method, which fires `onBookmarksChanged`, which the tree provider translates into `onDidChangeTreeData`, which causes the tree to redraw. There is no file watcher — this is deliberate and consistent with the "no auto-fix on move" decision in [§5](#5-commands).
 
+> **Amended by issue #51 (2026-08-04).** A `FileSystemWatcher` was added for exactly one path —
+> `.vscode/bookmarks.json`, the external-interop mirror file — and for that path only. The
+> original decision still holds for everything else: bookmark *targets* are never watched, and a
+> moved or renamed target still shows as broken with no auto-fix. See
+> `docs/superpowers/plans/2026-08-04-bookmark-descriptions-file-mirror.md`.
+
 ## 3. Data model
 
 ```ts
@@ -89,7 +95,7 @@ interface BookmarkData {
 
 **Collection delete is a single atomic write.** `deleteCollection(id)` sets `collectionId: null` on every item that belonged to that collection, removes the collection itself, and performs this as one `workspaceState.update()` call for the whole `BookmarkData` blob — followed by exactly one `onBookmarksChanged` firing. There are no separate per-item writes or per-item events; this falls out of the single-blob storage model, and is called out explicitly here because the per-mutation framing in [§2](#2-architecture) could otherwise be misread as implying N writes for an N-item collection delete.
 
-**Malformed stored data never crashes activation.** On load, the stored value is validated against the expected shape (`version` present, `items` an array, `collections` an array). If the value is missing, `null`, or fails this shape check, `BookmarkStore` initializes a fresh `{ version: 1, items: [], collections: [] }`, logs a warning to the extension's output channel, and continues normally — activation never throws on bad stored data. See also [§6 Error handling](#6-error-handling).
+**Malformed stored data never crashes activation.** On load, the stored value is validated against the expected shape (`version` present, `items` an array, `collections` an array). If the value is missing, `null`, or fails this shape check, `BookmarkStore` initializes a fresh `{ version: CURRENT_SCHEMA_VERSION, items: [], collections: [] }` (schema version 2 as of issue #51), logs a warning to the extension's output channel, and continues normally — activation never throws on bad stored data. See also [§6 Error handling](#6-error-handling).
 
 **Known limitation — no cross-window conflict detection.** `workspaceState` has no built-in mechanism for detecting concurrent edits from two VS Code windows on the same workspace; two windows editing bookmarks at once use last-write-wins semantics on `workspaceState.update()`. This is out of scope for v1.
 

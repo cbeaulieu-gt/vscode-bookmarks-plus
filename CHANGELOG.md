@@ -4,6 +4,21 @@ All notable changes to the "Bookmarks Plus" extension are documented in this fil
 
 ## [Unreleased]
 
+### Added
+
+- Optional descriptions on bookmarks and collections, set via the **Set Description** context-menu
+  command and shown in the tree view's hover tooltip.
+- `.vscode/bookmarks.json`: bookmarks are mirrored to a plain JSON file in the workspace, so
+  external tools can read and change them. External edits are picked up live; edits made while
+  VS Code is closed are picked up on the next activation. Single-folder workspaces only.
+- A JSON schema for `.vscode/bookmarks.json`, giving completion and validation when the file is
+  edited in VS Code.
+
+### Changed
+
+- The stored bookmark schema is now version 2. Existing version 1 data loads unchanged, with
+  descriptions absent.
+
 ## [1.0.0] — 2026-07-26
 
 ### Added
