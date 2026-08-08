@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Prompter } from '../../commands';
+import { MirrorPort } from '../../bookmarkMirror';
 
 export class FakeMemento implements vscode.Memento {
   private store = new Map<string, unknown>();
@@ -20,7 +21,11 @@ export class FakeMemento implements vscode.Memento {
   }
 
   update(key: string, value: unknown): Thenable<void> {
-    this.store.set(key, value);
+    if (value === undefined) {
+      this.store.delete(key);
+    } else {
+      this.store.set(key, value);
+    }
     this.updateCallCount++;
     return Promise.resolve();
   }
@@ -43,6 +48,36 @@ export class FakeOutput {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export class FakeMirror implements MirrorPort {
+  content: string | undefined;
+  writeCount = 0;
+  readCount = 0;
+  failNextWrite = false;
+  failNextRead = false;
+
+  constructor(initialContent?: string) {
+    this.content = initialContent;
+  }
+
+  async read(): Promise<string | undefined> {
+    this.readCount++;
+    if (this.failNextRead) {
+      this.failNextRead = false;
+      throw new Error('simulated read failure');
+    }
+    return this.content;
+  }
+
+  async write(content: string): Promise<void> {
+    if (this.failNextWrite) {
+      this.failNextWrite = false;
+      throw new Error('simulated write failure');
+    }
+    this.content = content;
+    this.writeCount++;
+  }
 }
 
 export interface FakePrompterOptions {
