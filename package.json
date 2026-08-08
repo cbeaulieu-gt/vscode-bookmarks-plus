@@ -67,7 +67,10 @@
         { "command": "bookmarks.addFile", "when": "false" },
         { "command": "bookmarks.addFolder", "when": "false" }
       ]
-    }
+    },
+    "jsonValidation": [
+      { "fileMatch": ".vscode/bookmarks.json", "url": "./schemas/bookmarks.schema.json" }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
