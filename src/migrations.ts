@@ -16,7 +16,7 @@ type MigrationInput = Record<string, unknown>;
  *
  * Pattern (not code) borrowed from `conf` and `redux-persist`, which converged on the
  * same shape independently; neither is taken as a dependency (see the plan's Tech Stack
- * note and docs/research/2026-08-04-bookmark-file-mirror-sync.md:86-102).
+ * note and issue #51's research findings).
  */
 const migrations: Record<number, (data: MigrationInput) => MigrationInput> = {
   // v1 -> v2: `description` is a new optional field on items and collections.
