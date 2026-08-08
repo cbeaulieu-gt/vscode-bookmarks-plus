@@ -41,6 +41,10 @@ export class FakeOutput {
   }
 }
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface FakePrompterOptions {
   inputBoxResult?: string | undefined;
   quickPickResult?: unknown;
