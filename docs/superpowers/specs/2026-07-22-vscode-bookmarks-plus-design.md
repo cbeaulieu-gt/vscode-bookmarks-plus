@@ -60,8 +60,7 @@ Data flow is one-way: a command handler (or `TreeDragAndDropController.handleDro
 > **Amended by issue #51 (2026-08-04).** A `FileSystemWatcher` was added for exactly one path —
 > `.vscode/bookmarks.json`, the external-interop mirror file — and for that path only. The
 > original decision still holds for everything else: bookmark *targets* are never watched, and a
-> moved or renamed target still shows as broken with no auto-fix. See
-> `docs/superpowers/plans/2026-08-04-bookmark-descriptions-file-mirror.md`.
+> moved or renamed target still shows as broken with no auto-fix. See issue #51.
 
 ## 3. Data model
 
