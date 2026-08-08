@@ -33,3 +33,17 @@ suite('Extension activation', () => {
     }
   });
 });
+
+suite('Extension - mirror wiring', () => {
+  test('activation succeeds and does not throw regardless of the workspace shape', async () => {
+    const ext = vscode.extensions.getExtension('cbeaulieu-gt.vscode-bookmarks-plus');
+    assert.ok(ext);
+    await ext!.activate();
+    assert.strictEqual(ext!.isActive, true);
+  });
+
+  test('the setDescription command is registered', async () => {
+    const commands = await vscode.commands.getCommands(true);
+    assert.ok(commands.includes('bookmarks.setDescription'));
+  });
+});
